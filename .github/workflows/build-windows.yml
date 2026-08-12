@@ -1,0 +1,113 @@
+name: Build Windows Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run full test suite
+        run: python -m pytest -q
+
+      - name: Build application with PyInstaller
+        run: >
+          pyinstaller
+          --noconfirm
+          --clean
+          --windowed
+          --name CoordinateConverterPro
+          --icon resources/icon.ico
+          app.py
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          $exe = "dist\CoordinateConverterPro\CoordinateConverterPro.exe"
+
+          if (-not (Test-Path $exe)) {
+            Write-Error "EXE was not created: $exe"
+            exit 1
+          }
+
+          Write-Host "EXE successfully created:"
+          Get-Item $exe
+
+      - name: Run Windows smoke test
+        run: >
+          python scripts/windows_smoke_test.py
+          --exe-dir dist/CoordinateConverterPro
+          --startup-wait-seconds 6
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "dist\CoordinateConverterPro\*" `
+            -DestinationPath "CoordinateConverterPro-Windows.zip" `
+            -Force
+
+      - name: Install Inno Setup
+        uses: ilammy/setup-innosetup@v1
+
+      - name: Build Windows Installer
+        shell: pwsh
+        run: |
+          iscc installer\setup.iss
+
+          $installer = "installer\Output\CoordinateConverterPro_Setup.exe"
+
+          if (-not (Test-Path $installer)) {
+            Write-Error "Installer was not created: $installer"
+            exit 1
+          }
+
+          Write-Host "Installer successfully created:"
+          Get-Item $installer
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoordinateConverterPro-Windows
+          path: CoordinateConverterPro-Windows.zip
+          if-no-files-found: error
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoordinateConverterPro-Setup
+          path: installer/Output/CoordinateConverterPro_Setup.exe
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            CoordinateConverterPro-Windows.zip
+            installer/Output/CoordinateConverterPro_Setup.exe
+          generate_release_notes: true
