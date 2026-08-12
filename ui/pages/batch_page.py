@@ -69,8 +69,23 @@ class BatchPage(QWidget):
         if folder:
             self.folder = folder
             self.folder_label.setText(folder)
-            n = len(find_batch_files(folder))
-            self.progress_label.setText(f"{n} supported file(s) found")
+            files = find_batch_files(folder)
+
+if files:
+    names = "\n".join(f"• {f.name}" for f in files[:20])
+
+    if len(files) > 20:
+        names += f"\n• ... and {len(files) - 20} more"
+
+    self.progress_label.setText(
+        f"{len(files)} supported file(s) found:\n{names}"
+    )
+else:
+    self.progress_label.setText(
+        "0 supported files found.\n"
+        f"Selected folder:\n{folder}\n\n"
+        "Supported extensions: KMZ, KML, CSV, XLSX"
+    )
 
     def _parse_file(self, path: Path):
         suffix = path.suffix.lower()
