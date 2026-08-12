@@ -40,32 +40,33 @@ jobs:
       - name: Install PyInstaller
         run: python -m pip install pyinstaller
 
-      - name: Build MH GeoSuite Pro
+      - name: Build MH GeoSuite Pro - standalone EXE
         run: |
           pyinstaller `
             --noconfirm `
             --clean `
+            --onefile `
             --windowed `
             --name MH_GeoSuite_Pro `
             --icon resources/icon.ico `
             app.py
 
-      - name: Verify EXE exists
+      - name: Verify standalone EXE exists
         shell: pwsh
         run: |
-          $exe = "dist\MH_GeoSuite_Pro\MH_GeoSuite_Pro.exe"
+          $exe = "dist\MH_GeoSuite_Pro.exe"
           if (-not (Test-Path $exe)) {
-            Write-Error "EXE was not created: $exe"
+            Write-Error "Standalone EXE was not created: $exe"
             exit 1
           }
-          Write-Host "MH GeoSuite Pro EXE successfully created:"
+          Write-Host "MH GeoSuite Pro standalone EXE successfully created:"
           Get-Item $exe
 
       - name: Create portable ZIP
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path "dist\MH_GeoSuite_Pro\*" `
+            -Path "dist\MH_GeoSuite_Pro.exe" `
             -DestinationPath "MH_GeoSuite_Pro-Windows.zip" `
             -Force
 
