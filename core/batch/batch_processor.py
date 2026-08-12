@@ -40,30 +40,28 @@ class BatchReport:
 
 
 def find_batch_files(folder: str) -> List[Path]:
-    p = Path(folder)
-    return sorted(
-        f for f in p.iterdir()
-        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
-    )
+    """
+    Find all supported coordinate files inside the selected folder.
 
+    Supports:
+    KMZ, KML, CSV, XLSX
 
-def run_batch(
-    folder: str,
-    process_one: Callable[[Path], FileResult],
-    progress_cb: Optional[Callable[[int, int, Path], None]] = None,
-) -> BatchReport:
-    """`process_one` is injected by the caller (UI layer) so this module
-    stays decoupled from the CRS engine / exporters, and is unit-testable
-    with a fake `process_one`."""
-    files = find_batch_files(folder)
-    report = BatchReport()
-    total = len(files)
-    for i, f in enumerate(files, start=1):
-        if progress_cb:
-            progress_cb(i, total, f)
-        try:
-            result = process_one(f)
-        except Exception as exc:  # noqa: BLE001
-            result = FileResult(str(f), "FAILED", message=str(exc))
-        report.results.append(result)
-    return report
+    Searches recursively through subfolders.
+    """
+    root = Path(folder)
+
+    if not root.exists() or not root.is_dir():
+        return []
+
+    files = []
+
+    for f in root.rglob("*"):
+        if not f.is_file():
+            continue
+
+        suffix = f.suffix.strip().lower()
+
+        if suffix in SUPPORTED_EXTENSIONS:
+            files.append(f)
+
+    return sorted(files, key=lambda p: str(p).lower())
