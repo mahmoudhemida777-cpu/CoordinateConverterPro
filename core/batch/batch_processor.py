@@ -1,11 +1,11 @@
-"""Reliable batch file discovery and execution."""
+"""Reliable Windows batch file discovery and execution."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
-# Supported formats currently implemented by the Batch Converter.
 SUPPORTED_EXTENSIONS = {".kmz", ".kml", ".csv", ".xlsx"}
 OUTPUT_SUFFIX = "_converted.xlsx"
 
@@ -38,26 +38,37 @@ class BatchReport:
 
 
 def find_batch_files(folder: str) -> List[Path]:
-    """Recursively find implemented coordinate files, case-insensitively."""
+    """Discover supported files recursively on Windows, case-insensitively.
+
+    Uses os.walk instead of Path.rglob so folders containing Windows junctions,
+    OneDrive placeholders, or unusual directory entries do not prevent the
+    remaining files from being discovered.
+    """
     root = Path(folder).expanduser()
     if not root.exists() or not root.is_dir():
         return []
 
     found: List[Path] = []
     try:
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            if path.name.startswith("~$"):
-                continue
-            if path.name.lower().endswith(OUTPUT_SUFFIX):
-                continue
-            if path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                found.append(path.resolve())
+        for current, dirs, files in os.walk(root, topdown=True, onerror=lambda _e: None):
+            dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", "venv", ".venv"}]
+            for filename in files:
+                path = Path(current) / filename
+                lower_name = filename.casefold()
+                if lower_name.startswith("~$"):
+                    continue
+                if lower_name.endswith(OUTPUT_SUFFIX.casefold()):
+                    continue
+                if path.suffix.casefold() in SUPPORTED_EXTENSIONS:
+                    try:
+                        found.append(path.resolve())
+                    except OSError:
+                        found.append(path.absolute())
     except (OSError, PermissionError):
         pass
 
-    return sorted(found, key=lambda p: str(p).lower())
+    unique = {str(p).casefold(): p for p in found}
+    return sorted(unique.values(), key=lambda p: str(p).casefold())
 
 
 def run_batch(
