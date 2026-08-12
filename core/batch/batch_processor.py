@@ -65,3 +65,37 @@ def find_batch_files(folder: str) -> List[Path]:
             files.append(f)
 
     return sorted(files, key=lambda p: str(p).lower())
+def run_batch(
+    folder: str,
+    process_one: Callable[[Path], FileResult],
+    progress_cb: Optional[Callable[[int, int, Path], None]] = None,
+) -> BatchReport:
+    """
+    Process every supported file in a folder.
+
+    A failure in one file does not stop the remaining files.
+    """
+
+    files = find_batch_files(folder)
+
+    report = BatchReport()
+    total = len(files)
+
+    for i, file_path in enumerate(files, start=1):
+
+        if progress_cb:
+            progress_cb(i, total, file_path)
+
+        try:
+            result = process_one(file_path)
+
+        except Exception as exc:
+            result = FileResult(
+                str(file_path),
+                "FAILED",
+                message=str(exc),
+            )
+
+        report.results.append(result)
+
+    return report
