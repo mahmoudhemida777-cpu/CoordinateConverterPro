@@ -71,42 +71,75 @@ jobs:
             -DestinationPath "CoordinateConverterPro-Windows.zip" `
             -Force
 
-      - name: Install Inno Setup
-        uses: ilammy/setup-innosetup@v1
+     name: Build Windows Release
 
-      - name: Build Windows Installer
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install dependencies
         shell: pwsh
         run: |
-          iscc installer\setup.iss
-
-          $installer = "installer\Output\CoordinateConverterPro_Setup.exe"
-
-          if (-not (Test-Path $installer)) {
-            Write-Error "Installer was not created: $installer"
-            exit 1
+          if (Test-Path "requirements.txt") {
+            python -m pip install -r requirements.txt
           }
 
-          Write-Host "Installer successfully created:"
-          Get-Item $installer
+          python -m pip install pyinstaller
 
-      - name: Upload portable ZIP
-        uses: actions/upload-artifact@v4
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          if (Test-Path "app.py") {
+            python -m PyInstaller --noconfirm --clean --onefile --windowed --name CoordinateConverterPro app.py
+          }
+          elseif (Test-Path "main.py") {
+            python -m PyInstaller --noconfirm --clean --onefile --windowed --name CoordinateConverterPro main.py
+          }
+          else {
+            Write-Error "Could not find app.py or main.py"
+          }
+
+      - name: Verify build
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/CoordinateConverterPro.exe")) {
+            Write-Error "Build failed: EXE was not created."
+          }
+
+          Get-Item "dist/CoordinateConverterPro.exe"
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v7
         with:
           name: CoordinateConverterPro-Windows
-          path: CoordinateConverterPro-Windows.zip
+          path: dist/CoordinateConverterPro.exe
           if-no-files-found: error
-
-      - name: Upload Windows Installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: CoordinateConverterPro-Setup
-          path: installer/Output/CoordinateConverterPro_Setup.exe
-          if-no-files-found: error
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
           files: |
             CoordinateConverterPro-Windows.zip
             installer/Output/CoordinateConverterPro_Setup.exe
