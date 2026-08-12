@@ -46,13 +46,11 @@ class BatchPage(QWidget):
         root.addLayout(crs_row)
 
         self.run_btn = QPushButton(tr("CONVERT"))
-        self.run_btn.setStyleSheet(
-            "background-color: #C9A227; color: white; font-weight: bold; padding: 8px 24px;"
-        )
+        self.run_btn.setStyleSheet("background-color: #C9A227; color: white; font-weight: bold; padding: 8px 24px;")
         self.run_btn.clicked.connect(self._run_batch)
         root.addWidget(self.run_btn)
 
-        self.progress_label = QLabel("")
+        self.progress_label = QLabel("Select a folder to scan for coordinate files.")
         root.addWidget(self.progress_label)
         self.progress = QProgressBar()
         root.addWidget(self.progress)
@@ -66,26 +64,22 @@ class BatchPage(QWidget):
 
     def _choose_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, tr("Choose Folder"))
-        if folder:
-            self.folder = folder
-            self.folder_label.setText(folder)
-            files = find_batch_files(folder)
-
-if files:
-    names = "\n".join(f"• {f.name}" for f in files[:20])
-
-    if len(files) > 20:
-        names += f"\n• ... and {len(files) - 20} more"
-
-    self.progress_label.setText(
-        f"{len(files)} supported file(s) found:\n{names}"
-    )
-else:
-    self.progress_label.setText(
-        "0 supported files found.\n"
-        f"Selected folder:\n{folder}\n\n"
-        "Supported extensions: KMZ, KML, CSV, XLSX"
-    )
+        if not folder:
+            return
+        self.folder = folder
+        self.folder_label.setText(folder)
+        self.results_list.clear()
+        files = find_batch_files(folder)
+        self.progress.setValue(0)
+        self.progress.setMaximum(max(len(files), 1))
+        if files:
+            self.progress_label.setText(f"{len(files)} supported file(s) found")
+            for path in files:
+                self.results_list.addItem(QListWidgetItem(f"READY — {path.name}   |   {path}"))
+        else:
+            self.progress_label.setText(
+                "0 supported files found. Supported: KMZ, KML, CSV, XLSX, TXT, XYZ, DAT, PRN, ASC"
+            )
 
     def _parse_file(self, path: Path):
         suffix = path.suffix.lower()
@@ -95,23 +89,27 @@ else:
             return kml_parser.parse_kml_file(str(path))
         if suffix == ".csv":
             cols = csv_parser.sniff_columns(str(path))
+            if len(cols) < 2:
+                raise ValueError("CSV must contain coordinate columns")
             mapping = csv_parser.ColumnMapping(
                 name_col=cols[0] if cols else None,
-                x_col=cols[1] if len(cols) > 1 else cols[0],
-                y_col=cols[2] if len(cols) > 2 else cols[0],
+                x_col=cols[1],
+                y_col=cols[2] if len(cols) > 2 else cols[1],
                 z_col=cols[3] if len(cols) > 3 else None,
             )
             return csv_parser.parse_csv(str(path), mapping)
         if suffix == ".xlsx":
             cols = xlsx_parser.sniff_columns(str(path))
+            if len(cols) < 2:
+                raise ValueError("XLSX must contain coordinate columns")
             mapping = xlsx_parser.ColumnMapping(
                 name_col=cols[0] if cols else None,
-                x_col=cols[1] if len(cols) > 1 else cols[0],
-                y_col=cols[2] if len(cols) > 2 else cols[0],
+                x_col=cols[1],
+                y_col=cols[2] if len(cols) > 2 else cols[1],
                 z_col=cols[3] if len(cols) > 3 else None,
             )
             return xlsx_parser.parse_xlsx(str(path), mapping)
-        raise ValueError(f"Unsupported extension: {suffix}")
+        raise ValueError(f"Parser not implemented for {suffix} yet")
 
     def _run_batch(self) -> None:
         if not self.folder:
@@ -124,6 +122,10 @@ else:
             return
 
         files = find_batch_files(self.folder)
+        if not files:
+            QMessageBox.information(self, "No files", "No supported coordinate files were found in this folder.")
+            return
+
         self.progress.setMaximum(len(files))
         self.results_list.clear()
 
@@ -142,13 +144,11 @@ else:
             self.progress_label.setText(f"File {i} / {total}: {path.name}")
 
         report = run_batch(self.folder, process_one, progress_cb)
-
+        self.results_list.clear()
         for r in report.results:
-            item = QListWidgetItem(
-                f"[{r.status}] {Path(r.path).name} — {r.points_success}/{r.points_total} points  {r.message}"
-            )
-            self.results_list.addItem(item)
-
+            self.results_list.addItem(QListWidgetItem(
+                f"[{r.status}] {Path(r.path).name} — {r.points_success}/{r.points_total} points {r.message}"
+            ))
         self.summary_label.setText(
             f"Success: {report.success_count}   Warnings: {report.warning_count}   Failed: {report.failed_count}"
         )
