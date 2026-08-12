@@ -40,40 +40,38 @@ jobs:
       - name: Install PyInstaller
         run: python -m pip install pyinstaller
 
-      - name: Build application with PyInstaller
+      - name: Build MH GeoSuite Pro
         run: |
           pyinstaller `
             --noconfirm `
             --clean `
             --windowed `
-            --name CoordinateConverterPro `
+            --name MH_GeoSuite_Pro `
             --icon resources/icon.ico `
             app.py
 
       - name: Verify EXE exists
         shell: pwsh
         run: |
-          $exe = "dist\CoordinateConverterPro\CoordinateConverterPro.exe"
-
+          $exe = "dist\MH_GeoSuite_Pro\MH_GeoSuite_Pro.exe"
           if (-not (Test-Path $exe)) {
             Write-Error "EXE was not created: $exe"
             exit 1
           }
-
-          Write-Host "EXE successfully created:"
+          Write-Host "MH GeoSuite Pro EXE successfully created:"
           Get-Item $exe
 
       - name: Create portable ZIP
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path "dist\CoordinateConverterPro\*" `
-            -DestinationPath "CoordinateConverterPro-Windows.zip" `
+            -Path "dist\MH_GeoSuite_Pro\*" `
+            -DestinationPath "MH_GeoSuite_Pro-Windows.zip" `
             -Force
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: CoordinateConverterPro-Windows
-          path: CoordinateConverterPro-Windows.zip
+          name: MH-GeoSuite-Pro-Windows
+          path: MH_GeoSuite_Pro-Windows.zip
           if-no-files-found: error
