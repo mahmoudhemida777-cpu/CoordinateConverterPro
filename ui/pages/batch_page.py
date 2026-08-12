@@ -77,9 +77,7 @@ class BatchPage(QWidget):
             for path in files:
                 self.results_list.addItem(QListWidgetItem(f"READY — {path.name}   |   {path}"))
         else:
-            self.progress_label.setText(
-                "0 supported files found. Supported: KMZ, KML, CSV, XLSX, TXT, XYZ, DAT, PRN, ASC"
-            )
+            self.progress_label.setText("0 supported files found. Supported: KMZ, KML, CSV, XLSX")
 
     def _parse_file(self, path: Path):
         suffix = path.suffix.lower()
@@ -89,23 +87,19 @@ class BatchPage(QWidget):
             return kml_parser.parse_kml_file(str(path))
         if suffix == ".csv":
             cols = csv_parser.sniff_columns(str(path))
-            if len(cols) < 2:
-                raise ValueError("CSV must contain coordinate columns")
+            if len(cols) < 3:
+                raise ValueError("CSV must contain Name, X and Y columns")
             mapping = csv_parser.ColumnMapping(
-                name_col=cols[0] if cols else None,
-                x_col=cols[1],
-                y_col=cols[2] if len(cols) > 2 else cols[1],
+                name_col=cols[0], x_col=cols[1], y_col=cols[2],
                 z_col=cols[3] if len(cols) > 3 else None,
             )
             return csv_parser.parse_csv(str(path), mapping)
         if suffix == ".xlsx":
             cols = xlsx_parser.sniff_columns(str(path))
-            if len(cols) < 2:
-                raise ValueError("XLSX must contain coordinate columns")
+            if len(cols) < 3:
+                raise ValueError("XLSX must contain Name, X and Y columns")
             mapping = xlsx_parser.ColumnMapping(
-                name_col=cols[0] if cols else None,
-                x_col=cols[1],
-                y_col=cols[2] if len(cols) > 2 else cols[1],
+                name_col=cols[0], x_col=cols[1], y_col=cols[2],
                 z_col=cols[3] if len(cols) > 3 else None,
             )
             return xlsx_parser.parse_xlsx(str(path), mapping)
@@ -130,14 +124,17 @@ class BatchPage(QWidget):
         self.results_list.clear()
 
         def process_one(path: Path) -> FileResult:
-            points = self._parse_file(path)
-            transformed = self.engine.transform_points(src, tgt, points)
-            out_path = path.with_name(path.stem + "_converted.xlsx")
-            export_xlsx(transformed, str(out_path), src, tgt)
-            success = sum(1 for p in transformed if p.status == "SUCCESS")
-            failed = sum(1 for p in transformed if p.status == "FAILED")
-            status = "SUCCESS" if failed == 0 else ("WARNING" if success > 0 else "FAILED")
-            return FileResult(str(path), status, len(transformed), success, failed)
+            try:
+                points = self._parse_file(path)
+                transformed = self.engine.transform_points(src, tgt, points)
+                out_path = path.with_name(path.stem + "_converted.xlsx")
+                export_xlsx(transformed, str(out_path), src, tgt)
+                success = sum(1 for p in transformed if p.status == "SUCCESS")
+                failed = sum(1 for p in transformed if p.status == "FAILED")
+                status = "SUCCESS" if failed == 0 else ("WARNING" if success > 0 else "FAILED")
+                return FileResult(str(path), status, len(transformed), success, failed)
+            except Exception as exc:
+                return FileResult(str(path), "FAILED", message=str(exc))
 
         def progress_cb(i: int, total: int, path: Path) -> None:
             self.progress.setValue(i)
