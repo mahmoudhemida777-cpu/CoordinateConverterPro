@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
-    QListWidgetItem, QStackedWidget,
+    QListWidgetItem, QStackedWidget, QStyle,
 )
 
 from ui.pages.dashboard_page import DashboardPage
@@ -37,7 +37,10 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setWindowIcon(self.style().standardIcon(self.style().SP_ComputerIcon))
+        # QCommonStyle does not expose SP_ComputerIcon directly; the
+        # standard pixmap enum belongs to QStyle. This works across the
+        # supported PySide6 builds, including the frozen Windows EXE.
+        self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
         self.resize(1200, 800)
 
         central = QWidget()
