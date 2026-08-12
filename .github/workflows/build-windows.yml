@@ -31,14 +31,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run full test suite
-        run: python -m pytest -q
-
-       - name: Install test dependencies
+      - name: Install test dependencies
         run: python -m pip install pytest
 
       - name: Run full test suite
         run: python -m pytest -q
+
+      - name: Install PyInstaller
+        run: python -m pip install pyinstaller
 
       - name: Build application with PyInstaller
         run: |
@@ -62,3 +62,18 @@ jobs:
 
           Write-Host "EXE successfully created:"
           Get-Item $exe
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "dist\CoordinateConverterPro\*" `
+            -DestinationPath "CoordinateConverterPro-Windows.zip" `
+            -Force
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoordinateConverterPro-Windows
+          path: CoordinateConverterPro-Windows.zip
+          if-no-files-found: error
