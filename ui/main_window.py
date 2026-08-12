@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
-    QListWidgetItem, QStackedWidget, QLabel,
+    QListWidgetItem, QStackedWidget,
 )
 
 from ui.pages.dashboard_page import DashboardPage
@@ -16,6 +16,8 @@ from ui.pages.about_page import AboutPage
 from ui.pages.placeholder_page import PlaceholderPage
 from ui.i18n import tr
 
+APP_NAME = "MH GeoSuite Pro"
+APP_TAGLINE = "Professional Surveying & Geospatial Engineering Suite"
 
 SIDEBAR_ITEMS = [
     ("dashboard", "Dashboard"),
@@ -34,7 +36,8 @@ SIDEBAR_ITEMS = [
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Coordinate Converter Pro")
+        self.setWindowTitle(APP_NAME)
+        self.setWindowIcon(self.style().standardIcon(self.style().SP_ComputerIcon))
         self.resize(1200, 800)
 
         central = QWidget()
@@ -43,7 +46,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ---- Sidebar ----
         self.sidebar = QListWidget()
         self.sidebar.setFixedWidth(200)
         self.sidebar.setObjectName("sidebar")
@@ -53,7 +55,6 @@ class MainWindow(QMainWindow):
             self.sidebar.addItem(item)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_changed)
 
-        # ---- Pages ----
         self.stack = QStackedWidget()
         self.pages = {
             "dashboard": DashboardPage(),
@@ -91,7 +92,6 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.stack)
-
         self.sidebar.setCurrentRow(0)
         self.statusBar().showMessage(tr("Ready"))
 
