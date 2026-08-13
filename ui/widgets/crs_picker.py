@@ -7,17 +7,16 @@ from core.crs.engine import CRSEngine
 
 
 class CRSPicker(QWidget):
-    """Global CRS search/selection widget backed by PROJ, with visible geographic presets."""
+    """Global CRS search/selection widget backed by PROJ plus project-local CRS presets."""
 
     crs_selected = Signal(str, str)
 
-    # Always-visible essentials so a new user can immediately choose
-    # Latitude/Longitude without having to know EPSG codes.
     QUICK_CRS = (
         ("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)"),
         ("EPSG:4979", "WGS 84 — Geographic 3D (Latitude / Longitude / Ellipsoidal Height)"),
         ("EPSG:32638", "WGS 84 / UTM zone 38N"),
         ("EPSG:20438", "Ain el Abd 1970 / UTM zone 38N"),
+        (CRSEngine.AMANAH_RIYADH, "Amanah Riyadh Local Grid 38N — Custom local CRS"),
     )
 
     def __init__(self, engine: CRSEngine, label: str = "") -> None:
@@ -33,7 +32,7 @@ class CRSPicker(QWidget):
 
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText(
-            "Search: WGS 84, Latitude/Longitude, EPSG:4326, UTM, Ain el Abd..."
+            "Search: WGS 84, Latitude/Longitude, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."
         )
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
@@ -68,7 +67,6 @@ class CRSPicker(QWidget):
         if len(query) < 2:
             return
 
-        # Friendly direct aliases for the most common geographic input.
         normalized = " ".join(query.lower().split())
         if normalized in {
             "wgs 84", "wgs84", "wgs 84 geographic", "latitude longitude",
@@ -84,20 +82,19 @@ class CRSPicker(QWidget):
 
         existing = {self.results_list.item(i).data(1000) for i in range(self.results_list.count())}
         for r in results:
-            if r.epsg in existing:
+            code = r.epsg
+            if code in existing:
                 continue
-            self._add_result(r.epsg, r.name)
+            self._add_result(code, r.name)
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         self.set_selected(str(item.data(1000)), str(item.data(1001)))
 
     def set_selected(self, epsg: str, name: str) -> None:
-        """Select any authority identifier (EPSG, ESRI, IGNF, OGC, etc.)."""
         epsg = epsg.strip()
-        if ":" not in epsg:
+        if ":" not in epsg and epsg != CRSEngine.AMANAH_RIYADH:
             epsg = f"EPSG:{epsg}"
-
-        self._selected_epsg = epsg.upper()
+        self._selected_epsg = epsg.upper() if epsg.startswith("epsg:") else epsg
         self._selected_name = name
         self.selected_label.setText(f"{self._selected_epsg} — {name}")
         self.search_box.setText(f"{name} / {self._selected_epsg}")
