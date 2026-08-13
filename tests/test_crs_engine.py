@@ -84,3 +84,24 @@ def test_batch_transform_bad_point_does_not_abort_others(engine):
     assert results[0].status == "SUCCESS"
     assert results[1].status == "FAILED"
     assert results[2].status == "SUCCESS"
+
+
+def test_operation_catalog_exposes_selected_transform(engine):
+    operations = engine.get_operations("EPSG:4326", "EPSG:20438")
+    assert operations
+    assert "Ain el Abd" in operations[0]["description"]
+    selected = engine.get_selected_operation("EPSG:4326", "EPSG:20438", "auto")
+    assert selected["id"] == operations[0]["id"]
+
+
+def test_explicit_first_operation_matches_auto(engine):
+    auto = engine.transform_point("EPSG:4326", "EPSG:20438", 46.84608496, 24.77305737, operation="auto")
+    explicit = engine.transform_point("EPSG:4326", "EPSG:20438", 46.84608496, 24.77305737, operation="0")
+    assert explicit[0] == pytest.approx(auto[0], abs=1e-9)
+    assert explicit[1] == pytest.approx(auto[1], abs=1e-9)
+
+
+def test_hayford_alias_resolves_to_ain_el_abd_1970_not_a_second_crs(engine):
+    details = engine.get_crs_details("Hayford 1909 Ain el Abd")
+    assert details["epsg"] == "EPSG:20438"
+    assert "International 1924" in details["ellipsoid"]
