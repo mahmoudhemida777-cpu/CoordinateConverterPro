@@ -67,16 +67,29 @@ class BatchPage(QWidget):
             c=xlsx_parser.sniff_columns(str(path)); return xlsx_parser.parse_xlsx(str(path),xlsx_parser.ColumnMapping(c[0],c[1],c[2],c[3] if len(c)>3 else None))
         raise ValueError(f"Unsupported file type: {s}")
 
+    def _source_for_file(self, path: Path, selected_source: str) -> str:
+        """KML/KMZ coordinates are defined as longitude/latitude (WGS84).
+        Do not let a persisted UTM selection misinterpret geographic KML values.
+        Tabular files remain user-controlled because their coordinate convention
+        cannot be inferred safely from the file extension alone.
+        """
+        if path.suffix.casefold() in {".kml", ".kmz"}:
+            if selected_source.upper() not in {"EPSG:4326", "EPSG:4979"}:
+                self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
+            return "EPSG:4326"
+        return selected_source
+
     def _run_batch(self):
         files=find_batch_files(self.folder) if self.folder else list(self.selected_files)
         if not files:QMessageBox.warning(self,"No files","No supported coordinate files selected."); return
-        src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
-        if not src or not tgt:QMessageBox.warning(self,"No CRS","Select both Source CRS and Target CRS."); return
+        selected_src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
+        if not selected_src or not tgt:QMessageBox.warning(self,"No CRS","Select both Source CRS and Target CRS."); return
         self.results_list.clear(); self.progress.setMaximum(len(files)); self.run_btn.setEnabled(False); outputs=[]; results=[]
         try:
             for i,path in enumerate(files,1):
                 self.progress.setValue(i); self.progress_label.setText(f"File {i} / {len(files)}: {path.name}")
                 try:
+                    src=self._source_for_file(path, selected_src)
                     points=self._parse_file(path)
                     if not points: raise ValueError("No coordinate points were found in the file.")
                     transformed=self.engine.transform_points(src,tgt,points)
@@ -92,5 +105,5 @@ class BatchPage(QWidget):
             for r in results:self.results_list.addItem(QListWidgetItem(f"[{r.status}] {Path(r.path).name} — {r.points_success}/{r.points_total} points {r.message}"))
             good=sum(r.status=="SUCCESS" for r in results); bad=sum(r.status=="FAILED" for r in results); warn=sum(r.status=="WARNING" for r in results)
             self.summary_label.setText(f"Files: {len(results)}   Success: {good}   Warnings: {warn}   Failed: {bad}"); self.last_output_paths=outputs
-            if outputs:self.batch_completed.emit(outputs,tgt,src); self.progress_label.setText(f"Batch complete — {len(outputs)} converted file(s) propagated to CAD/Civil 3D.")
+            if outputs:self.batch_completed.emit(outputs,tgt,selected_src); self.progress_label.setText(f"Batch complete — {len(outputs)} converted file(s) propagated to CAD/Civil 3D.")
         finally:self.run_btn.setEnabled(True)
