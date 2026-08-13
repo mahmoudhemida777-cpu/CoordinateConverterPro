@@ -34,6 +34,17 @@ class CRSEngine:
         "ain el abd / utm zone 38n": "EPSG:20438",
         "ain el abd utm zone 38n": "EPSG:20438",
         "ain el abd utm 38n": "EPSG:20438",
+        # Ain Al Abd 1970 uses the Hayford 1909 / International 1924
+        # reference ellipsoid. These aliases make the system discoverable
+        # when survey documents identify the datum by its ellipsoid name.
+        "hayford 1909": "EPSG:20438",
+        "hayford 1909 ain el abd": "EPSG:20438",
+        "hayford 1909 ain al abd": "EPSG:20438",
+        "international 1924": "EPSG:20438",
+        "international 1924 ain el abd": "EPSG:20438",
+        "international 1924 ain al abd": "EPSG:20438",
+        "ain el abd 1970 hayford 1909": "EPSG:20438",
+        "ain el abd 1970 international 1924": "EPSG:20438",
     }
 
     _SEARCH_TYPES = (
