@@ -2,19 +2,18 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
-    QListWidgetItem, QStackedWidget, QStyle,
-)
+from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QListWidget, QListWidgetItem, QStackedWidget, QStyle
 
 from ui.pages.dashboard_page import DashboardPage
 from ui.pages.import_page import ImportPage
 from ui.pages.converter_page import ConverterPage
 from ui.pages.cad_page import CadPage
 from ui.pages.batch_page import BatchPage
+from ui.pages.survey_page import SurveyPage
+from ui.pages.map_page import MapPage
+from ui.pages.history_page import HistoryPage
 from ui.pages.settings_page import SettingsPage
 from ui.pages.about_page import AboutPage
-from ui.pages.placeholder_page import PlaceholderPage
 from ui.i18n import tr
 
 APP_NAME = "MH GeoSuite Pro"
@@ -61,21 +60,11 @@ class MainWindow(QMainWindow):
             "dashboard": DashboardPage(),
             "import": ImportPage(),
             "converter": ConverterPage(),
-            "survey": PlaceholderPage(
-                "Survey Tools",
-                "Distance, Bearing, Azimuth, Area, Perimeter, Coordinate Difference, "
-                "Offset, Point Renumbering, Grid, COGO — architecture ready.",
-            ),
+            "survey": SurveyPage(),
             "cad": CadPage(),
             "batch": BatchPage(),
-            "map": PlaceholderPage(
-                "Map Preview",
-                "Offline-friendly map preview is planned for a future release.",
-            ),
-            "history": PlaceholderPage(
-                "History",
-                "Conversion history log — coming in a future release.",
-            ),
+            "map": MapPage(),
+            "history": HistoryPage(),
             "settings": SettingsPage(),
             "about": AboutPage(),
         }
