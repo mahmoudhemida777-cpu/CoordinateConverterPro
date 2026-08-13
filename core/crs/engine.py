@@ -8,6 +8,7 @@ import pyproj
 from pyproj import CRS, Transformer
 from pyproj.database import get_authorities, query_crs_info
 from pyproj.exceptions import CRSError
+from pyproj.transformer import TransformerGroup
 
 
 class CRSEngine:
@@ -17,6 +18,9 @@ class CRSEngine:
         "ain el abd": "EPSG:20438", "ain el abd 38": "EPSG:20438", "ain el abd 1970": "EPSG:20438",
         "ain el abd 1970 38": "EPSG:20438", "ain el abd / utm zone 38n": "EPSG:20438",
         "ain el abd utm zone 38n": "EPSG:20438", "ain el abd utm 38n": "EPSG:20438",
+        # Hayford 1909 is the historical ellipsoid used by the Ain el Abd 1970
+        # datum; it is not a separate projected CRS. Keep these aliases mapped
+        # to the actual Ain el Abd 1970 CRS rather than implying a second datum.
         "hayford 1909": "EPSG:20438", "hayford 1909 ain el abd": "EPSG:20438",
         "hayford 1909 ain al abd": "EPSG:20438", "international 1924": "EPSG:20438",
         "international 1924 ain el abd": "EPSG:20438", "international 1924 ain al abd": "EPSG:20438",
@@ -29,8 +33,9 @@ class CRSEngine:
     )
 
     def __init__(self) -> None:
-        self._transformer_cache: dict[tuple[str, str], Transformer] = {}
+        self._transformer_cache: dict[tuple[str, str, str], Transformer] = {}
         self._catalog_cache: Optional[List[CRSInfo]] = None
+        self._operation_cache: dict[tuple[str, str], List[dict]] = {}
 
     @property
     def authorities(self) -> List[str]:
@@ -141,19 +146,70 @@ class CRSEngine:
             return False, f"Could not validate coordinate for CRS: {exc}"
         return True, ""
 
-    def get_transformer(self, source: str, target: str) -> Transformer:
+    def get_operations(self, source: str, target: str) -> List[dict]:
+        """Return PROJ's available operations for a CRS pair.
+
+        This exposes the transformation choice separately from the CRS. It is
+        important for Saudi work because EPSG:20438 has multiple transformations
+        and the default Saudi operation 1111 is only about 10 m per axis.
+        """
         key = (source, target)
+        if key in self._operation_cache:
+            return list(self._operation_cache[key])
+        group = TransformerGroup(
+            self._resolve_crs(source), self._resolve_crs(target),
+            always_xy=True, allow_ballpark=False,
+        )
+        operations = []
+        for idx, transformer in enumerate(group.transformers):
+            operations.append({
+                "id": idx,
+                "name": transformer.name,
+                "description": transformer.description,
+                "accuracy": transformer.accuracy,
+            })
+        self._operation_cache[key] = operations
+        return list(operations)
+
+    def get_transformer(self, source: str, target: str, operation: str = "auto") -> Transformer:
+        key = (source, target, operation)
         if key not in self._transformer_cache:
-            self._transformer_cache[key] = Transformer.from_crs(self._resolve_crs(source), self._resolve_crs(target), always_xy=True)
+            group = TransformerGroup(
+                self._resolve_crs(source), self._resolve_crs(target),
+                always_xy=True, allow_ballpark=False,
+            )
+            transformers = list(group.transformers)
+            if not transformers:
+                raise CRSError(f"No non-ballpark transformation available from {source} to {target}.")
+            if operation == "auto":
+                selected = transformers[0]
+            else:
+                try:
+                    index = int(operation)
+                    selected = transformers[index]
+                except (ValueError, IndexError):
+                    raise CRSError(f"Unknown transformation operation '{operation}'.")
+            self._transformer_cache[key] = selected
         return self._transformer_cache[key]
 
-    def transform_point(self, source: str, target: str, x: float, y: float, z: Optional[float] = None) -> Tuple[float, float, Optional[float]]:
-        transformer = self.get_transformer(source, target)
+    def get_selected_operation(self, source: str, target: str, operation: str = "auto") -> dict:
+        operations = self.get_operations(source, target)
+        if not operations:
+            return {"id": None, "name": "N/A", "description": "No operation", "accuracy": None}
+        if operation == "auto":
+            return operations[0]
+        try:
+            return operations[int(operation)]
+        except (ValueError, IndexError):
+            raise CRSError(f"Unknown transformation operation '{operation}'.")
+
+    def transform_point(self, source: str, target: str, x: float, y: float, z: Optional[float] = None, operation: str = "auto") -> Tuple[float, float, Optional[float]]:
+        transformer = self.get_transformer(source, target, operation)
         if z is not None:
             tx, ty, tz = transformer.transform(x, y, z); return tx, ty, tz
         tx, ty = transformer.transform(x, y); return tx, ty, None
 
-    def transform_points(self, source: str, target: str, points: Sequence[PointResult]) -> List[PointResult]:
+    def transform_points(self, source: str, target: str, points: Sequence[PointResult], operation: str = "auto") -> List[PointResult]:
         out: List[PointResult] = []
         for p in points:
             if p.src_x is None or p.src_y is None:
@@ -162,7 +218,7 @@ class CRSEngine:
             if not valid:
                 out.append(PointResult(p.name, p.src_x, p.src_y, p.src_z, status="FAILED", message=f"Source CRS/coordinate mismatch: {reason}")); continue
             try:
-                tx, ty, tz = self.transform_point(source, target, p.src_x, p.src_y, p.src_z)
+                tx, ty, tz = self.transform_point(source, target, p.src_x, p.src_y, p.src_z, operation)
                 if any(v != v for v in (tx, ty)):
                     raise ValueError("Transformation returned NaN (point likely outside CRS domain)")
                 target_valid, target_reason = self.validate_point_domain(target, tx, ty)
