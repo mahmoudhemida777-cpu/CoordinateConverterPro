@@ -27,72 +27,35 @@ class ConverterPage(QWidget):
         self.source_points: list[PointResult] = []
         self.result_points: list[PointResult] = []
         self.current_file: str | None = None
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(30, 20, 30, 20)
-
-        title = QLabel(tr("CRS Converter"))
-        title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;")
-        root.addWidget(title)
-
-        file_row = QHBoxLayout()
-        self.choose_btn = QPushButton(tr("SOURCE FILE"))
-        self.choose_btn.clicked.connect(self._choose_file)
-        file_row.addWidget(self.choose_btn)
-        self.file_label = QLabel("No file selected")
-        self.file_label.setStyleSheet("color:#777;")
-        file_row.addWidget(self.file_label)
-        file_row.addStretch()
-        root.addLayout(file_row)
-
-        splitter = QSplitter(Qt.Horizontal)
-        self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
-        self.target_picker = CRSPicker(self.engine, tr("TARGET CRS"))
-        splitter.addWidget(self.source_picker)
-        splitter.addWidget(self.target_picker)
-        root.addWidget(splitter)
-
-        convert_row = QHBoxLayout()
-        self.convert_btn = QPushButton(tr("CONVERT"))
-        self.convert_btn.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:8px 24px;")
-        self.convert_btn.clicked.connect(self._run_conversion)
-        convert_row.addWidget(self.convert_btn)
-        convert_row.addStretch()
-        root.addLayout(convert_row)
-
+        root = QVBoxLayout(self); root.setContentsMargins(30, 20, 30, 20)
+        title = QLabel(tr("CRS Converter")); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
+        file_row = QHBoxLayout(); self.choose_btn = QPushButton(tr("SOURCE FILE")); self.choose_btn.clicked.connect(self._choose_file); file_row.addWidget(self.choose_btn)
+        self.file_label = QLabel("No file selected"); self.file_label.setStyleSheet("color:#777;"); file_row.addWidget(self.file_label); file_row.addStretch(); root.addLayout(file_row)
+        splitter = QSplitter(Qt.Horizontal); self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS")); self.target_picker = CRSPicker(self.engine, tr("TARGET CRS")); splitter.addWidget(self.source_picker); splitter.addWidget(self.target_picker); root.addWidget(splitter)
+        convert_row = QHBoxLayout(); self.convert_btn = QPushButton(tr("CONVERT")); self.convert_btn.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:8px 24px;"); self.convert_btn.clicked.connect(self._run_conversion); convert_row.addWidget(self.convert_btn); convert_row.addStretch(); root.addLayout(convert_row)
         self.progress = QProgressBar(); self.progress.setValue(0); root.addWidget(self.progress)
-
-        summary_box = QGroupBox()
-        summary_layout = QHBoxLayout(summary_box)
-        self.total_label = QLabel(f"{tr('Total Points')}: 0")
-        self.success_label = QLabel(f"{tr('Successful')}: 0")
-        self.failed_label = QLabel(f"{tr('Failed')}: 0")
-        self.warning_label = QLabel(f"{tr('Warnings')}: 0")
+        summary_box = QGroupBox(); summary_layout = QHBoxLayout(summary_box)
+        self.total_label = QLabel(f"{tr('Total Points')}: 0"); self.success_label = QLabel(f"{tr('Successful')}: 0"); self.failed_label = QLabel(f"{tr('Failed')}: 0"); self.warning_label = QLabel(f"{tr('Warnings')}: 0")
         for lbl in (self.total_label, self.success_label, self.failed_label, self.warning_label): summary_layout.addWidget(lbl)
         root.addWidget(summary_box)
-
-        self.results_table = QTableWidget(0, 9)
-        self.results_table.setHorizontalHeaderLabels(["Name", "Src X", "Src Y", "Src Z", "Tgt X", "Tgt Y", "Tgt Z", "Status", "Message"])
-        root.addWidget(self.results_table)
-
-        export_box = QGroupBox("Export Converted Points")
-        export_row = QHBoxLayout(export_box)
-        self.export_dxf_btn = QPushButton("AutoCAD / Civil 3D — DXF")
-        self.export_dxf_btn.clicked.connect(self._export_dxf)
-        self.export_civil_btn = QPushButton("Civil 3D — PENZD CSV")
-        self.export_civil_btn.clicked.connect(self._export_civil3d)
-        self.export_xlsx_btn = QPushButton("Excel XLSX")
-        self.export_xlsx_btn.clicked.connect(self._export_xlsx)
-        self.export_csv_btn = QPushButton("Generic CSV")
-        self.export_csv_btn.clicked.connect(self._export_csv)
-        for btn in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn):
-            btn.setEnabled(False)
-            export_row.addWidget(btn)
+        self.results_table = QTableWidget(0, 9); self.results_table.setHorizontalHeaderLabels(["Name", "Src X", "Src Y", "Src Z", "Tgt X", "Tgt Y", "Tgt Z", "Status", "Message"]); root.addWidget(self.results_table)
+        export_box = QGroupBox("Export Converted Points"); export_row = QHBoxLayout(export_box)
+        self.export_dxf_btn = QPushButton("AutoCAD / Civil 3D — DXF"); self.export_dxf_btn.clicked.connect(self._export_dxf)
+        self.export_civil_btn = QPushButton("Civil 3D — PENZD CSV"); self.export_civil_btn.clicked.connect(self._export_civil3d)
+        self.export_xlsx_btn = QPushButton("Excel XLSX"); self.export_xlsx_btn.clicked.connect(self._export_xlsx)
+        self.export_csv_btn = QPushButton("Generic CSV"); self.export_csv_btn.clicked.connect(self._export_csv)
+        for btn in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn): btn.setEnabled(False); export_row.addWidget(btn)
         root.addWidget(export_box)
+
+    def load_active_file(self, path: str) -> None:
+        """Load Dashboard-selected file into this converter without another picker."""
+        if path and Path(path).is_file(): self._load_path(path)
 
     def _choose_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, tr("Choose File"), "", "Supported files (*.kmz *.kml *.csv *.xlsx);;All files (*.*)")
-        if not path: return
+        if path: self._load_path(path)
+
+    def _load_path(self, path: str) -> None:
         suffix = Path(path).suffix.lower()
         try:
             if suffix == ".kmz": points = kml_parser.parse_kmz_file(path)
@@ -106,22 +69,16 @@ class ConverterPage(QWidget):
                 if dlg.exec() != dlg.Accepted: return
                 points = xlsx_parser.parse_xlsx(path, xlsx_parser.ColumnMapping(**dlg.result_mapping()))
             else: raise ValueError(f"Unsupported file type: {suffix}")
-        except Exception as exc:
-            QMessageBox.critical(self, "Import Error", str(exc)); return
-        self.source_points = points; self.result_points = []; self.current_file = path
-        self.file_label.setText(f"{Path(path).name} — {len(points)} points loaded")
+        except Exception as exc: QMessageBox.critical(self, "Import Error", str(exc)); return
+        self.source_points = points; self.result_points = []; self.current_file = path; self.file_label.setText(f"{Path(path).name} — {len(points)} points loaded")
         for btn in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn): btn.setEnabled(False)
 
     def _run_conversion(self) -> None:
-        if not self.source_points:
-            QMessageBox.warning(self, "No data", "Please choose a source file first."); return
+        if not self.source_points: QMessageBox.warning(self, "No data", "Please choose a source file first."); return
         src = self.source_picker.selected_epsg(); tgt = self.target_picker.selected_epsg()
-        if not src or not tgt:
-            QMessageBox.warning(self, "No CRS", "Please select both a source and target CRS."); return
-        report = validate_points(self.source_points); zone_warnings = validate_zone_consistency(src, tgt)
-        self.progress.setMaximum(len(self.source_points)); self.result_points = []
-        for i, p in enumerate(self.source_points, start=1):
-            self.result_points.append(self.engine.transform_points(src, tgt, [p])[0]); self.progress.setValue(i)
+        if not src or not tgt: QMessageBox.warning(self, "No CRS", "Please select both a source and target CRS."); return
+        report = validate_points(self.source_points); zone_warnings = validate_zone_consistency(src, tgt); self.progress.setMaximum(len(self.source_points)); self.result_points = []
+        for i, p in enumerate(self.source_points, start=1): self.result_points.append(self.engine.transform_points(src, tgt, [p])[0]); self.progress.setValue(i)
         self._populate_results()
         for btn in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn): btn.setEnabled(bool(self.result_points))
         append_history({"time": datetime.now().astimezone().isoformat(timespec="seconds"), "file": Path(self.current_file).name if self.current_file else "", "source_crs": src, "target_crs": tgt, "points": len(self.result_points)})
@@ -129,25 +86,20 @@ class ConverterPage(QWidget):
             msg = "\n".join(zone_warnings + [w.message for w in report.warnings]); QMessageBox.information(self, "Warnings", msg)
 
     def _populate_results(self) -> None:
-        pts = self.result_points
-        total = len(pts); success = sum(p.status == "SUCCESS" for p in pts); failed = sum(p.status == "FAILED" for p in pts); warnings = sum(p.status == "WARNING" for p in pts)
-        self.total_label.setText(f"{tr('Total Points')}: {total}"); self.success_label.setText(f"{tr('Successful')}: {success}"); self.failed_label.setText(f"{tr('Failed')}: {failed}"); self.warning_label.setText(f"{tr('Warnings')}: {warnings}")
-        self.results_table.setRowCount(total)
+        pts = self.result_points; total = len(pts); success = sum(p.status == "SUCCESS" for p in pts); failed = sum(p.status == "FAILED" for p in pts); warnings = sum(p.status == "WARNING" for p in pts)
+        self.total_label.setText(f"{tr('Total Points')}: {total}"); self.success_label.setText(f"{tr('Successful')}: {success}"); self.failed_label.setText(f"{tr('Failed')}: {failed}"); self.warning_label.setText(f"{tr('Warnings')}: {warnings}"); self.results_table.setRowCount(total)
         for i, p in enumerate(pts):
             for j, v in enumerate([p.name,p.src_x,p.src_y,p.src_z,p.tgt_x,p.tgt_y,p.tgt_z,p.status,p.message]): self.results_table.setItem(i,j,QTableWidgetItem("" if v is None else str(v)))
 
     def _require_results(self) -> bool:
-        if not self.result_points:
-            QMessageBox.warning(self, "Nothing to export", "Run the conversion first."); return False
+        if not self.result_points: QMessageBox.warning(self, "Nothing to export", "Run the conversion first."); return False
         return True
 
     def _export_dxf(self) -> None:
         if not self._require_results(): return
         path, _ = QFileDialog.getSaveFileName(self, "Export AutoCAD / Civil 3D DXF", "Converted_Points.dxf", "AutoCAD DXF (*.dxf)")
         if not path: return
-        try:
-            export_dxf(self.result_points, path, label_mode=LabelMode.NAME, text_height=1.0, use_target_coords=True)
-            QMessageBox.information(self, "Export Complete", f"DXF created successfully:\n{path}")
+        try: export_dxf(self.result_points, path, label_mode=LabelMode.NAME, text_height=1.0, use_target_coords=True); QMessageBox.information(self, "Export Complete", f"DXF created successfully:\n{path}")
         except Exception as exc: QMessageBox.critical(self, "DXF Export Error", str(exc))
 
     def _export_civil3d(self) -> None:
@@ -167,9 +119,7 @@ class ConverterPage(QWidget):
         if not self._require_results(): return
         path, _ = QFileDialog.getSaveFileName(self, "Export XLSX", "Project_Export.xlsx", "Excel (*.xlsx)")
         if not path: return
-        details = self.engine.get_crs_details(self.source_picker.selected_epsg())
-        export_xlsx(self.result_points, path, self.source_picker.selected_epsg(), self.target_picker.selected_epsg(), details)
-        QMessageBox.information(self, "Exported", f"Saved to {path}")
+        details = self.engine.get_crs_details(self.source_picker.selected_epsg()); export_xlsx(self.result_points, path, self.source_picker.selected_epsg(), self.target_picker.selected_epsg(), details); QMessageBox.information(self, "Exported", f"Saved to {path}")
 
     def _export_csv(self) -> None:
         if not self._require_results(): return
