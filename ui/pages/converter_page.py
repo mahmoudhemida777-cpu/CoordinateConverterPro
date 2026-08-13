@@ -18,6 +18,7 @@ from ui.i18n import tr
 from ui.widgets.crs_picker import CRSPicker
 from ui.pages.import_page import ColumnMappingDialog
 from ui.pages.history_page import append_history
+from ui.pages.settings_page import current_precision
 
 
 class ConverterPage(QWidget):
@@ -48,11 +49,10 @@ class ConverterPage(QWidget):
         root.addWidget(export_box)
 
     def load_active_file(self, path: str) -> None:
-        """Load Dashboard-selected file into this converter without another picker."""
         if path and Path(path).is_file(): self._load_path(path)
 
     def _choose_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, tr("Choose File"), "", "Supported files (*.kmz *.kml *.csv *.xlsx);;All files (*.*)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Choose File"), "", "Supported files (*.kmz *.kml *.csv *.xlsx *.xls);;All files (*.*)")
         if path: self._load_path(path)
 
     def _load_path(self, path: str) -> None:
@@ -64,7 +64,7 @@ class ConverterPage(QWidget):
                 columns = csv_parser.sniff_columns(path); dlg = ColumnMappingDialog(columns, self)
                 if dlg.exec() != dlg.Accepted: return
                 points = csv_parser.parse_csv(path, csv_parser.ColumnMapping(**dlg.result_mapping()))
-            elif suffix == ".xlsx":
+            elif suffix in (".xlsx", ".xls"):
                 columns = xlsx_parser.sniff_columns(path); dlg = ColumnMappingDialog(columns, self)
                 if dlg.exec() != dlg.Accepted: return
                 points = xlsx_parser.parse_xlsx(path, xlsx_parser.ColumnMapping(**dlg.result_mapping()))
@@ -81,15 +81,18 @@ class ConverterPage(QWidget):
         for i, p in enumerate(self.source_points, start=1): self.result_points.append(self.engine.transform_points(src, tgt, [p])[0]); self.progress.setValue(i)
         self._populate_results()
         for btn in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn): btn.setEnabled(bool(self.result_points))
-        append_history({"time": datetime.now().astimezone().isoformat(timespec="seconds"), "file": Path(self.current_file).name if self.current_file else "", "source_crs": src, "target_crs": tgt, "points": len(self.result_points)})
+        append_history({"time": datetime.now().astimezone().isoformat(timespec="seconds"), "file": Path(self.current_file).name if self.current_file else "", "source_crs": src, "target_crs": tgt, "points": len(self.result_points), "operation": "CRS Conversion", "status": "SUCCESS"})
         if zone_warnings or report.warnings:
             msg = "\n".join(zone_warnings + [w.message for w in report.warnings]); QMessageBox.information(self, "Warnings", msg)
+
+    def _fmt(self, value) -> str:
+        return "" if value is None else (f"{value:.{current_precision()}f}" if isinstance(value, (int, float)) else str(value))
 
     def _populate_results(self) -> None:
         pts = self.result_points; total = len(pts); success = sum(p.status == "SUCCESS" for p in pts); failed = sum(p.status == "FAILED" for p in pts); warnings = sum(p.status == "WARNING" for p in pts)
         self.total_label.setText(f"{tr('Total Points')}: {total}"); self.success_label.setText(f"{tr('Successful')}: {success}"); self.failed_label.setText(f"{tr('Failed')}: {failed}"); self.warning_label.setText(f"{tr('Warnings')}: {warnings}"); self.results_table.setRowCount(total)
         for i, p in enumerate(pts):
-            for j, v in enumerate([p.name,p.src_x,p.src_y,p.src_z,p.tgt_x,p.tgt_y,p.tgt_z,p.status,p.message]): self.results_table.setItem(i,j,QTableWidgetItem("" if v is None else str(v)))
+            for j, v in enumerate([p.name,p.src_x,p.src_y,p.src_z,p.tgt_x,p.tgt_y,p.tgt_z,p.status,p.message]): self.results_table.setItem(i,j,QTableWidgetItem(self._fmt(v)))
 
     def _require_results(self) -> bool:
         if not self.result_points: QMessageBox.warning(self, "Nothing to export", "Run the conversion first."); return False
@@ -107,11 +110,12 @@ class ConverterPage(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Export Civil 3D PENZD", "Civil3D_PENZD.csv", "CSV (*.csv)")
         if not path: return
         try:
+            precision = current_precision()
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
-                writer = csv.writer(f)
+                writer = csv.writer(f); writer.writerow(["Point Number","Easting","Northing","Elevation","Description"])
                 for i, p in enumerate(self.result_points, 1):
                     if p.tgt_x is None or p.tgt_y is None: continue
-                    writer.writerow([i, float(p.tgt_x), float(p.tgt_y), float(p.tgt_z or 0.0), p.name or ""])
+                    writer.writerow([i, f"{p.tgt_x:.{precision}f}", f"{p.tgt_y:.{precision}f}", f"{(p.tgt_z or 0):.{precision}f}", p.name or ""])
             QMessageBox.information(self, "Export Complete", f"Civil 3D PENZD point file created:\n{path}\n\nImport format: Point, Easting, Northing, Elevation, Description")
         except Exception as exc: QMessageBox.critical(self, "Civil 3D Export Error", str(exc))
 
@@ -119,10 +123,10 @@ class ConverterPage(QWidget):
         if not self._require_results(): return
         path, _ = QFileDialog.getSaveFileName(self, "Export XLSX", "Project_Export.xlsx", "Excel (*.xlsx)")
         if not path: return
-        details = self.engine.get_crs_details(self.source_picker.selected_epsg()); export_xlsx(self.result_points, path, self.source_picker.selected_epsg(), self.target_picker.selected_epsg(), details); QMessageBox.information(self, "Exported", f"Saved to {path}")
+        details = self.engine.get_crs_details(self.source_picker.selected_epsg()); export_xlsx(self.result_points, path, self.source_picker.selected_epsg(), self.target_picker.selected_epsg(), details, current_precision()); QMessageBox.information(self, "Exported", f"Saved to {path}")
 
     def _export_csv(self) -> None:
         if not self._require_results(): return
         path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "Project_Export.csv", "CSV (*.csv)")
         if not path: return
-        export_csv(self.result_points, path); QMessageBox.information(self, "Exported", f"Saved to {path}")
+        export_csv(self.result_points, path, current_precision()); QMessageBox.information(self, "Exported", f"Saved to {path}")
