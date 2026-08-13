@@ -52,6 +52,12 @@ class ConverterPage(QWidget):
             else: raise ValueError(f"Unsupported file type: {suffix}")
         except Exception as exc: QMessageBox.critical(self,"Import Error",str(exc)); return
         self.source_points=points; self.result_points=[]; self.current_file=path; self.file_label.setText(f"{Path(path).name} — {len(points)} points loaded")
+        # KML/KMZ coordinates are always longitude/latitude in WGS 84. Show
+        # the actual 2D geographic CRS (EPSG:4326) instead of a persisted 3D
+        # WGS84 choice (EPSG:4979), which can confuse users even though PROJ
+        # can transform both successfully.
+        if suffix in {".kml", ".kmz"}:
+            self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
         [x.setEnabled(False) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn)]
 
     def _run_conversion(self)->None:
