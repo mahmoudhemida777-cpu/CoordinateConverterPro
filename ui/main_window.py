@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from ui.pages.dashboard_page import DashboardPage
 from ui.pages.import_page import ImportPage
 from ui.pages.converter_page import ConverterPage
+from ui.pages.cad_page import CadPage
 from ui.pages.batch_page import BatchPage
 from ui.pages.settings_page import SettingsPage
 from ui.pages.about_page import AboutPage
@@ -37,9 +38,6 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        # QCommonStyle does not expose SP_ComputerIcon directly; the
-        # standard pixmap enum belongs to QStyle. This works across the
-        # supported PySide6 builds, including the frozen Windows EXE.
         self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
         self.resize(1200, 800)
 
@@ -65,23 +63,14 @@ class MainWindow(QMainWindow):
             "converter": ConverterPage(),
             "survey": PlaceholderPage(
                 "Survey Tools",
-                "Distance, Bearing, Azimuth, Area, Perimeter, Coordinate "
-                "Difference, Offset, Point Renumbering, Grid, COGO — "
-                "architecture ready, tools shipping incrementally in "
-                "upcoming releases.",
+                "Distance, Bearing, Azimuth, Area, Perimeter, Coordinate Difference, "
+                "Offset, Point Renumbering, Grid, COGO — architecture ready.",
             ),
-            "cad": PlaceholderPage(
-                "Civil / CAD",
-                "Additional Civil 3D / AutoCAD integration tools — "
-                "coming in a future release. DXF export is already "
-                "available today from the CRS Converter and Batch pages.",
-            ),
+            "cad": CadPage(),
             "batch": BatchPage(),
             "map": PlaceholderPage(
                 "Map Preview",
-                "Offline-friendly map preview (no paid API) is planned "
-                "for a future release. It is optional by design and the "
-                "application works fully offline without it.",
+                "Offline-friendly map preview is planned for a future release.",
             ),
             "history": PlaceholderPage(
                 "History",
