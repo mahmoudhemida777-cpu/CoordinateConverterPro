@@ -69,13 +69,12 @@ class BatchPage(QWidget):
 
     def _source_for_file(self, path: Path, selected_source: str) -> str:
         """KML/KMZ coordinates are defined as longitude/latitude (WGS84).
-        Do not let a persisted UTM selection misinterpret geographic KML values.
-        Tabular files remain user-controlled because their coordinate convention
-        cannot be inferred safely from the file extension alone.
+        Always display and use EPSG:4326 so the UI matches the actual 2D
+        geographic coordinate convention in KML/KMZ, even if a previous
+        3D WGS84 selection (EPSG:4979) was persisted.
         """
         if path.suffix.casefold() in {".kml", ".kmz"}:
-            if selected_source.upper() not in {"EPSG:4326", "EPSG:4979"}:
-                self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
+            self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
             return "EPSG:4326"
         return selected_source
 
