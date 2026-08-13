@@ -1,115 +1,54 @@
-# Coordinate Converter Pro
+# MH GeoSuite Pro v1.1.0
 
-A Windows desktop application (PySide6) for converting survey/GIS point
-coordinates between any two Coordinate Reference Systems, powered by
-PROJ/pyproj. Supports KMZ/KML/CSV/XLSX import, XLSX/CSV/DXF export, batch
-folder conversion, and bilingual (AR/EN) interface.
+Professional Surveying & Geospatial Engineering Suite by Mahmoud Hemida.
 
-## ⚠️ Honest status of this delivery
+## Current status
 
-This is the **complete, real source project** — not a stub, not
-placeholder code. Every module listed under "What has actually been
-tested" below has been executed for real and passes. However:
+The current `main` branch contains the real PySide6 desktop application with functional pages and connected workflows. The application is not intended to present placeholder pages as working features.
 
-**No compiled `.exe` is included in this delivery**, because it was
-authored in an offline Linux sandbox with no internet access and no
-Windows environment. It is architecturally impossible to produce a real
-Windows `.exe`, run a Windows smoke test, or publish a GitHub Release
-from that environment. Claiming otherwise would be false.
+### Functional modules
 
-**What gets you the real `.exe`:** push this repository to GitHub. The
-included workflow (`.github/workflows/build-windows.yml`) runs on a real
-`windows-latest` GitHub-hosted runner and will:
-install dependencies → run the full pytest suite → build the EXE with
-PyInstaller → run a Windows smoke test against the actual built EXE →
-package it as `CoordinateConverterPro-Windows.zip` → build
-`CoordinateConverterPro_Setup.exe` with Inno Setup → upload both as
-workflow artifacts → and, if you push a `v*.*.*` tag, create a GitHub
-Release with both files attached.
+- **Dashboard** — scans a project folder, lists supported coordinate files, selects an Active File, and propagates that file to Import, CRS Converter, Batch, Map and Civil/CAD.
+- **Import** — KMZ/KML/CSV/XLSX/XLS loading with column mapping for tabular files.
+- **CRS Converter** — source-to-target CRS transformation through PROJ/pyproj, validation, result table and XLSX/CSV/DXF/Civil 3D exports.
+- **Survey Tools** — COGO distance, horizontal distance, azimuth, coordinate deltas and polygon area.
+- **Civil / CAD** — loads raw coordinate files or Batch `_converted.xlsx` results; Batch results are treated as final target coordinates and are not converted a second time; exports DXF and Civil 3D PENZD CSV.
+- **Batch Converter** — folder/file/Active File processing using the same CRS engine as single-file conversion; records each successful/warning operation in History and propagates successful converted workbooks to Civil/CAD.
+- **Map** — offline point preview for CSV/XLSX/KML/KMZ.
+- **History** — persistent conversion log with automatic refresh and clear/refresh controls.
+- **Settings** — Arabic/English selection and persistent decimal precision from 0–6; precision is applied to displayed conversion results and tabular exports.
+- **About** — application/version and PROJ engine information.
 
-If the pytest step or the Windows smoke-test step fails, every later
-step (packaging, installer, release) is skipped automatically — the
-workflow will never report success on a broken build.
+## CRS support
 
-### How to get the EXE
+CRS selection is powered by PROJ/pyproj and supports authority identifiers beyond EPSG where available. Ain el Abd 1970 / UTM Zone 38N (`EPSG:20438`) is supported, with Hayford 1909 / International 1924 aliases exposed for easier discovery.
 
-```bash
-git init
-git add .
-git commit -m "Initial commit — Coordinate Converter Pro v1.0.0"
-git remote add origin <your-empty-github-repo-url>
-git push -u origin main
-git tag v1.0.0
-git push origin v1.0.0
-```
+## File workflows
 
-Then open the **Actions** tab on GitHub, watch the `Build Windows
-Release` run, and once green:
-- Download `CoordinateConverterPro-Windows` from the run's Artifacts, **or**
-- Download `CoordinateConverterPro_Setup.exe` from the same Artifacts, **or**
-- If you pushed the `v1.0.0` tag, go to **Releases** — both files are attached there.
+### Single conversion
 
-## What has actually been tested (in this authoring environment)
+`Dashboard → Active File → CRS Converter → Source CRS → Target CRS → Convert → Export`
 
-pyproj, ezdxf, and PySide6 are not installable offline here (no PyPI
-access). Everything that does NOT depend on them was executed for real
-via `scripts/local_smoke_test.py` (stdlib `unittest`, 14/14 passing):
+### Batch conversion
 
-- CSV parsing incl. column mapping and graceful handling of bad rows
-- XLSX parsing incl. column mapping
-- XLSX export — verified exact `Points` + `Project Info` sheet structure
-- CSV export
-- KML parsing incl. `Placemark`, `Point`, `MultiGeometry`
-- KMZ parsing incl. automatic internal `.kml` extraction (no manual unzip)
-- Coordinate/point validation (missing, out-of-range, duplicates)
-- UTM zone-mismatch heuristic warning
-- Batch processor: continues past a failing file, correct progress callbacks
+`Dashboard → Active File or Choose Folder/Files → Batch → Source CRS → Target CRS → Convert`
 
-`tests/test_crs_engine.py` (pyproj) and `tests/test_dxf_exporter.py`
-(ezdxf) are written and included, and will run for real on the GitHub
-Actions Windows runner where those packages install normally — including
-the mandatory spec test case (EPSG:4326 → EPSG:20438 for the given Riyadh
-coordinate), computed by PROJ, never hard-coded.
+Successful Batch workbooks are emitted as `<name>_converted.xlsx` with `Target X/Y/Z` and `Project Info`. When that result reaches Civil/CAD, the target coordinates are loaded directly and the application reports **Already Converted** instead of asking for another CRS transformation.
 
-The PySide6 UI has not been launched locally (no display, no PySide6
-available offline). It is exercised by `scripts/windows_smoke_test.py` in
-CI, which launches the real built EXE and confirms it starts without
-crashing.
+### CAD / Civil 3D
 
-## Architecture
+- DXF point entities with labels.
+- Civil 3D PENZD CSV: Point, Easting, Northing, Elevation, Description.
+- Target coordinates are used for converted results.
 
-```
-app.py                  Entry point
-core/
-  models.py              Dependency-free shared data models
-  crs/engine.py           PROJ/pyproj transformation + EPSG search
-  parsers/                csv, xlsx, kml/kmz
-  exporters/               xlsx, csv, dxf
-  validation/               point + zone validation
-  batch/                     folder batch processor
-ui/                       PySide6 windows, pages, widgets, i18n
-survey/, cad/, gis/       Extension points for v1.1+ tools (Survey Tools,
-                          Civil/CAD, SHP/GeoJSON) — not yet implemented,
-                          intentionally not faked as working
-tests/                   pytest suite (full, runs on CI)
-scripts/                 local_smoke_test.py (stdlib-only, runs here),
-                          windows_smoke_test.py (runs on CI against the EXE)
-installer/               Inno Setup script
-.github/workflows/       Windows build/test/package/release pipeline
-resources/               icon.ico (placeholder — replace with your brand icon)
-```
+## Testing
 
-## V1 scope (per spec)
+The repository includes automated tests for the CRS engine, parsers, exporters, validation, batch processing and UI page integration. GitHub Actions runs the test suite and the Windows build/smoke-test workflow configured by the repository.
 
-Implemented: CRS search & Any→Any conversion, KMZ/KML/CSV/XLSX import,
-XLSX/CSV/DXF export, column mapping, validation, batch conversion,
-AR/EN toggle, logging, precision setting.
+A successful CI run validates the automated checks; it should not be described as a substitute for a human acceptance test of every button in a production Windows environment.
 
-Architecture-ready but not yet implemented (clearly labeled as such in
-the UI, never faked as working): Survey Tools (COGO, bearing, etc.),
-extended Civil/CAD tools, Map Preview, GeoJSON/SHP import-export,
-History, Project save/open.
+## Version
 
-## License
+`MH GeoSuite Pro v1.1.0`
 
-Commercial — Coordinate Converter Pro.
+Developed by **Mahmoud Hemida**.
