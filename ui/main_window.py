@@ -71,8 +71,6 @@ class MainWindow(QMainWindow):
         for key, _ in SIDEBAR_ITEMS:
             self.stack.addWidget(self.pages[key])
 
-        # Dashboard is the workspace source of truth. Once a file is selected,
-        # load it into every page that can consume coordinate files.
         self.pages["dashboard"].file_selected.connect(self._set_active_file)
 
         layout.addWidget(self.sidebar)
@@ -81,8 +79,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(tr("Ready"))
 
     def _set_active_file(self, path: str) -> None:
-        """Propagate Dashboard's selected file to all relevant workspace pages."""
-        for key in ("import", "converter", "cad", "map"):
+        """Propagate Dashboard's selected file to every workspace consumer."""
+        for key in ("import", "converter", "cad", "batch", "map"):
             page = self.pages[key]
             loader = getattr(page, "load_active_file", None)
             if callable(loader):
