@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QProgressBar, QSplitter, QMessageBox, QGroupBox, QComboBox
 from core.crs.engine import CRSEngine
 from core.models import PointResult
-from core.parsers import csv_parser, xlsx_parser, kml_parser
+from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
 from core.validation.validator import validate_points, validate_zone_consistency
 from core.exporters.xlsx_exporter import export_xlsx
 from core.exporters.csv_exporter import export_csv
@@ -36,7 +36,7 @@ class ConverterPage(QWidget):
         if path and Path(path).is_file(): self._load_path(path)
 
     def _choose_file(self)->None:
-        path,_=QFileDialog.getOpenFileName(self,tr("Choose File"),"","Supported files (*.kmz *.kml *.csv *.xlsx);;All files (*.*)")
+        path,_=QFileDialog.getOpenFileName(self,tr("Choose File"),"","Supported files (*.kmz *.kml *.csv *.xlsx *.txt);;All files (*.*)")
         if path:self._load_path(path)
 
     def _load_path(self,path:str)->None:
@@ -44,6 +44,7 @@ class ConverterPage(QWidget):
         try:
             if suffix==".kmz": points=kml_parser.parse_kmz_file(path)
             elif suffix==".kml": points=kml_parser.parse_kml_file(path)
+            elif suffix==".txt": points=txt_parser.parse_txt(path)
             elif suffix==".csv":
                 dlg=ColumnMappingDialog(csv_parser.sniff_columns(path),self)
                 if dlg.exec()!=dlg.Accepted:return
