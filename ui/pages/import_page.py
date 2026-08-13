@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QComboBox, QDialog, QFormLayout, QDialogButtonBox, QMessageBox
 from core.models import PointResult
-from core.parsers import csv_parser, xlsx_parser, kml_parser
+from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
 from ui.i18n import tr
 
 
@@ -32,8 +32,9 @@ class ImportPage(QWidget):
         btn_row = QHBoxLayout()
         self.excel_btn = QPushButton("Load Excel (.XLSX)"); self.excel_btn.clicked.connect(self._choose_excel)
         self.csv_btn = QPushButton("Load CSV (.CSV)"); self.csv_btn.clicked.connect(self._choose_csv)
+        self.txt_btn = QPushButton("Load Survey TXT (.TXT)"); self.txt_btn.clicked.connect(self._choose_txt)
         self.choose_btn = QPushButton(tr("Choose File")); self.choose_btn.clicked.connect(self._choose_file)
-        btn_row.addWidget(self.excel_btn); btn_row.addWidget(self.csv_btn); btn_row.addWidget(self.choose_btn); btn_row.addStretch(); layout.addLayout(btn_row)
+        btn_row.addWidget(self.excel_btn); btn_row.addWidget(self.csv_btn); btn_row.addWidget(self.txt_btn); btn_row.addWidget(self.choose_btn); btn_row.addStretch(); layout.addLayout(btn_row)
         self.file_label = QLabel("No file selected"); self.file_label.setStyleSheet("color: #777; margin-top: 6px;"); layout.addWidget(self.file_label)
         self.table = QTableWidget(0, 4); self.table.setHorizontalHeaderLabels(["Name", "X", "Y", "Z"]); layout.addWidget(self.table)
 
@@ -48,8 +49,12 @@ class ImportPage(QWidget):
         path, _ = QFileDialog.getOpenFileName(self, "Load CSV", "", "CSV files (*.csv)")
         if path: self._import_path(path)
 
+    def _choose_txt(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Load Survey TXT", "", "Survey TXT files (*.txt);;Text files (*.txt)")
+        if path: self._import_path(path)
+
     def _choose_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, tr("Choose File"), "", "Supported files (*.kmz *.kml *.csv *.xlsx);;KMZ (*.kmz);;KML (*.kml);;CSV (*.csv);;Excel (*.xlsx)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("Choose File"), "", "Supported files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ (*.kmz);;KML (*.kml);;CSV (*.csv);;Excel (*.xlsx);;Survey TXT (*.txt)")
         if path: self._import_path(path)
 
     def _import_path(self, path: str) -> None:
@@ -65,6 +70,7 @@ class ImportPage(QWidget):
                 mapping = self._ask_mapping(xlsx_parser.sniff_columns(path));
                 if mapping is None: return
                 points = xlsx_parser.parse_xlsx(path, xlsx_parser.ColumnMapping(**mapping))
+            elif suffix == ".txt": points = txt_parser.parse_txt(path)
             else: QMessageBox.warning(self, "Unsupported", f"Unsupported file type: {suffix}"); return
         except Exception as exc: QMessageBox.critical(self, "Import Error", str(exc)); return
         self.active_path = path; self.points = points; self.file_label.setText(path); self._populate_table(points); self.points_imported.emit(points)
