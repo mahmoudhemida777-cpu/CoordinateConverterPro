@@ -10,10 +10,9 @@ from PySide6.QtWidgets import (
 from core.crs.engine import CRSEngine
 from core.parsers import csv_parser, xlsx_parser, kml_parser
 from core.exporters.xlsx_exporter import export_xlsx
-from core.batch.batch_processor import find_batch_files, run_batch, FileResult
+from core.batch.batch_processor import find_batch_files, FileResult
 from ui.i18n import tr
 from ui.widgets.crs_picker import CRSPicker
-
 
 SUPPORTED_FILTER = (
     "Supported coordinate files (*.kmz *.kml *.csv *.xlsx);;"
@@ -28,6 +27,7 @@ class BatchPage(QWidget):
         self.engine = CRSEngine()
         self.folder: str | None = None
         self.selected_files: list[Path] = []
+        self.active_file: Path | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(30, 20, 30, 20)
@@ -45,6 +45,10 @@ class BatchPage(QWidget):
         self.choose_files_btn.clicked.connect(self._choose_files)
         folder_row.addWidget(self.choose_files_btn)
 
+        self.use_active_btn = QPushButton("Use Active File")
+        self.use_active_btn.clicked.connect(self._use_active_file)
+        folder_row.addWidget(self.use_active_btn)
+
         self.refresh_btn = QPushButton("Refresh Scan")
         self.refresh_btn.clicked.connect(self._refresh_scan)
         folder_row.addWidget(self.refresh_btn)
@@ -54,6 +58,10 @@ class BatchPage(QWidget):
         folder_row.addWidget(self.folder_label)
         folder_row.addStretch()
         root.addLayout(folder_row)
+
+        self.workspace_label = QLabel("Workspace: no active file")
+        self.workspace_label.setStyleSheet("color: #1F3864; font-weight: bold;")
+        root.addWidget(self.workspace_label)
 
         crs_row = QHBoxLayout()
         self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
@@ -67,7 +75,7 @@ class BatchPage(QWidget):
         self.run_btn.clicked.connect(self._run_batch)
         root.addWidget(self.run_btn)
 
-        self.progress_label = QLabel("Choose a folder or select files to begin.")
+        self.progress_label = QLabel("Choose a folder, select files, or use the Dashboard Active File.")
         root.addWidget(self.progress_label)
         self.progress = QProgressBar()
         root.addWidget(self.progress)
@@ -79,6 +87,24 @@ class BatchPage(QWidget):
         self.summary_label.setStyleSheet("font-weight: bold; margin-top: 8px;")
         root.addWidget(self.summary_label)
 
+    def load_active_file(self, path: str) -> None:
+        """Receive Dashboard's Active File without opening another file dialog."""
+        candidate = Path(path)
+        if not candidate.is_file():
+            self.active_file = None
+            self.workspace_label.setText("Workspace: active file not found")
+            return
+        self.active_file = candidate
+        self.folder = None
+        self._display_files([candidate], f"Active File: {candidate.name}")
+        self.workspace_label.setText(f"Workspace Active File: {candidate.name}")
+
+    def _use_active_file(self) -> None:
+        if self.active_file and self.active_file.is_file():
+            self._display_files([self.active_file], f"Active File: {self.active_file.name}")
+            return
+        QMessageBox.information(self, "No Active File", "Select a file in Dashboard and press Use Selected File first.")
+
     def _display_files(self, files: list[Path], source_text: str) -> None:
         self.selected_files = list(files)
         self.results_list.clear()
@@ -89,12 +115,12 @@ class BatchPage(QWidget):
         if not files:
             self.progress_label.setText(
                 "0 supported files found. Supported: KMZ, KML, CSV, XLSX. "
-                "Use Choose Files to select a file directly."
+                "Use Choose Files or Dashboard Active File."
             )
             self.summary_label.setText("")
             return
 
-        self.progress_label.setText(f"{len(files)} supported file(s) found")
+        self.progress_label.setText(f"{len(files)} file(s) ready for CRS conversion")
         for path in files:
             self.results_list.addItem(QListWidgetItem(f"READY — {path.name}   |   {path}"))
 
@@ -103,6 +129,7 @@ class BatchPage(QWidget):
         if not folder:
             return
         self.folder = folder
+        self.active_file = None
         self._scan_folder()
 
     def _scan_folder(self) -> None:
@@ -120,16 +147,17 @@ class BatchPage(QWidget):
             self._scan_folder()
         elif self.selected_files:
             self._display_files(self.selected_files, "Selected files")
+        elif self.active_file:
+            self._use_active_file()
         else:
-            QMessageBox.information(self, "Nothing to refresh", "Choose a folder or files first.")
+            QMessageBox.information(self, "Nothing to refresh", "Choose a folder, files, or an Active File first.")
 
     def _choose_files(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(
-            self, "Choose Coordinate Files", "", SUPPORTED_FILTER
-        )
+        paths, _ = QFileDialog.getOpenFileNames(self, "Choose Coordinate Files", "", SUPPORTED_FILTER)
         if not paths:
             return
         self.folder = None
+        self.active_file = None
         files = [Path(p) for p in paths if Path(p).is_file()]
         self._display_files(files, f"Selected files: {len(files)}")
 
@@ -143,19 +171,13 @@ class BatchPage(QWidget):
             cols = csv_parser.sniff_columns(str(path))
             if len(cols) < 3:
                 raise ValueError("CSV must contain at least Name, X and Y columns")
-            mapping = csv_parser.ColumnMapping(
-                name_col=cols[0], x_col=cols[1], y_col=cols[2],
-                z_col=cols[3] if len(cols) > 3 else None,
-            )
+            mapping = csv_parser.ColumnMapping(name_col=cols[0], x_col=cols[1], y_col=cols[2], z_col=cols[3] if len(cols) > 3 else None)
             return csv_parser.parse_csv(str(path), mapping)
         if suffix == ".xlsx":
             cols = xlsx_parser.sniff_columns(str(path))
             if len(cols) < 3:
                 raise ValueError("XLSX must contain at least Name, X and Y columns")
-            mapping = xlsx_parser.ColumnMapping(
-                name_col=cols[0], x_col=cols[1], y_col=cols[2],
-                z_col=cols[3] if len(cols) > 3 else None,
-            )
+            mapping = xlsx_parser.ColumnMapping(name_col=cols[0], x_col=cols[1], y_col=cols[2], z_col=cols[3] if len(cols) > 3 else None)
             return xlsx_parser.parse_xlsx(str(path), mapping)
         raise ValueError(f"Parser not implemented for {suffix} yet")
 
@@ -167,11 +189,7 @@ class BatchPage(QWidget):
             files = list(self.selected_files)
 
         if not files:
-            QMessageBox.warning(
-                self, "No files",
-                "No supported coordinate files are selected. "
-                "Choose a folder or use Choose Files."
-            )
+            QMessageBox.warning(self, "No files", "No supported coordinate files are selected. Choose a folder, files, or use Dashboard Active File.")
             return
 
         src = self.source_picker.selected_epsg()
@@ -204,14 +222,8 @@ class BatchPage(QWidget):
             report = run_batch_from_files(files, process_one, progress_cb)
             self.results_list.clear()
             for r in report.results:
-                self.results_list.addItem(QListWidgetItem(
-                    f"[{r.status}] {Path(r.path).name} — "
-                    f"{r.points_success}/{r.points_total} points {r.message}"
-                ))
-            self.summary_label.setText(
-                f"Files: {len(report.results)}   Success: {report.success_count}   "
-                f"Warnings: {report.warning_count}   Failed: {report.failed_count}"
-            )
+                self.results_list.addItem(QListWidgetItem(f"[{r.status}] {Path(r.path).name} — {r.points_success}/{r.points_total} points {r.message}"))
+            self.summary_label.setText(f"Files: {len(report.results)}   Success: {report.success_count}   Warnings: {report.warning_count}   Failed: {report.failed_count}")
         finally:
             self.run_btn.setEnabled(True)
 
@@ -219,7 +231,6 @@ class BatchPage(QWidget):
 def run_batch_from_files(files: list[Path], process_one, progress_cb=None):
     """Run an already-selected file list without rescanning the filesystem."""
     from core.batch.batch_processor import BatchReport
-
     report = BatchReport()
     total = len(files)
     for i, path in enumerate(files, start=1):
