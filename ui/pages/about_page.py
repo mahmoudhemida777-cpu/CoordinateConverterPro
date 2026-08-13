@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_NAME = "MH GeoSuite Pro"
 TAGLINE = "Professional Surveying & Geospatial Engineering Suite"
 
@@ -16,11 +16,9 @@ class AboutPage(QWidget):
         title = QLabel(APP_NAME)
         title.setStyleSheet("font-size: 22px; font-weight: bold; color: #1F3864;")
         layout.addWidget(title)
-
         tagline = QLabel(TAGLINE)
         tagline.setStyleSheet("color: #555; font-size: 13px;")
         layout.addWidget(tagline)
-
         version = QLabel(f"Version {APP_VERSION}")
         version.setStyleSheet("color: #777; margin-top: 8px;")
         layout.addWidget(version)
