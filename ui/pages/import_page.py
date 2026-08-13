@@ -10,16 +10,28 @@ from ui.i18n import tr
 
 class ColumnMappingDialog(QDialog):
     def __init__(self, columns: list[str], parent=None) -> None:
-        super().__init__(parent); self.setWindowTitle("Column Mapping"); layout = QFormLayout(self)
+        super().__init__(parent)
+        self.setWindowTitle("Column Mapping")
+        layout = QFormLayout(self)
         self.name_combo = QComboBox(); self.name_combo.addItems(["<none>"] + columns)
         self.x_combo = QComboBox(); self.x_combo.addItems(columns)
         self.y_combo = QComboBox(); self.y_combo.addItems(columns)
         self.z_combo = QComboBox(); self.z_combo.addItems(["<none>"] + columns)
-        layout.addRow("Point Name →", self.name_combo); layout.addRow("X / Easting / Longitude →", self.x_combo); layout.addRow("Y / Northing / Latitude →", self.y_combo); layout.addRow("Z / Elevation →", self.z_combo)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addRow(buttons)
+        layout.addRow("Point Name →", self.name_combo)
+        layout.addRow("X / Easting / Longitude →", self.x_combo)
+        layout.addRow("Y / Northing / Latitude →", self.y_combo)
+        layout.addRow("Z / Elevation →", self.z_combo)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
 
     def result_mapping(self) -> dict:
-        return {"name_col": None if self.name_combo.currentText() == "<none>" else self.name_combo.currentText(), "x_col": self.x_combo.currentText(), "y_col": self.y_combo.currentText(), "z_col": None if self.z_combo.currentText() == "<none>" else self.z_combo.currentText()}
+        return {
+            "name_col": None if self.name_combo.currentText() == "<none>" else self.name_combo.currentText(),
+            "x_col": self.x_combo.currentText(),
+            "y_col": self.y_combo.currentText(),
+            "z_col": None if self.z_combo.currentText() == "<none>" else self.z_combo.currentText(),
+        }
 
 
 class ImportPage(QWidget):
@@ -63,20 +75,26 @@ class ImportPage(QWidget):
             if suffix == ".kmz": points = kml_parser.parse_kmz_file(path)
             elif suffix == ".kml": points = kml_parser.parse_kml_file(path)
             elif suffix == ".csv":
-                mapping = self._ask_mapping(csv_parser.sniff_columns(path));
-                if mapping is None: return
-                points = csv_parser.parse_csv(path, csv_parser.ColumnMapping(**mapping))
+                # CSV survey files are auto-detected: header/headerless, with or without point number.
+                points = csv_parser.parse_csv_auto(path)
             elif suffix == ".xlsx":
-                mapping = self._ask_mapping(xlsx_parser.sniff_columns(path));
+                mapping = self._ask_mapping(xlsx_parser.sniff_columns(path))
                 if mapping is None: return
                 points = xlsx_parser.parse_xlsx(path, xlsx_parser.ColumnMapping(**mapping))
-            elif suffix == ".txt": points = txt_parser.parse_txt(path)
-            else: QMessageBox.warning(self, "Unsupported", f"Unsupported file type: {suffix}"); return
-        except Exception as exc: QMessageBox.critical(self, "Import Error", str(exc)); return
+            elif suffix == ".txt":
+                # TXT survey files are auto-detected: E,N,Z or Point,E,N,Z, with common delimiters.
+                points = txt_parser.parse_txt(path)
+            else:
+                QMessageBox.warning(self, "Unsupported", f"Unsupported file type: {suffix}"); return
+        except Exception as exc:
+            QMessageBox.critical(self, "Import Error", str(exc)); return
         self.active_path = path; self.points = points; self.file_label.setText(path); self._populate_table(points); self.points_imported.emit(points)
 
     def _ask_mapping(self, columns: list[str]) -> dict | None:
-        dlg = ColumnMappingDialog(columns, self); return dlg.result_mapping() if dlg.exec() == QDialog.Accepted else None
+        dlg = ColumnMappingDialog(columns, self)
+        result = dlg.exec()
+        accepted = getattr(QDialog.DialogCode, "Accepted", 1)
+        return dlg.result_mapping() if result == accepted else None
 
     def _populate_table(self, points: list[PointResult]) -> None:
         self.table.setRowCount(len(points))
