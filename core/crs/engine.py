@@ -9,7 +9,7 @@ Every transformation is computed by PROJ via pyproj.Transformer.
 """
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from core.models import CRSInfo, PointResult
 
@@ -22,20 +22,40 @@ from pyproj.exceptions import CRSError
 class CRSEngine:
     """Any CRS -> Any CRS transformation engine backed by PROJ."""
 
+    # Common engineering/survey aliases that should resolve even when the
+    # user searches in Arabic or uses a common spelling variant.
+    _CRS_ALIASES = {
+        "عين العبد": "20438",
+        "عين العبد 38": "20438",
+        "عين العبد 1970": "20438",
+        "عين العبد 1970 38": "20438",
+        "ain al abd": "20438",
+        "ain al abd 38": "20438",
+        "ain el abd 38": "20438",
+        "ain el abd 1970": "20438",
+        "ain el abd 1970 38": "20438",
+        "ain el abd / utm zone 38n": "20438",
+        "ain el abd utm zone 38n": "20438",
+        "ain el abd utm 38n": "20438",
+    }
+
     def __init__(self) -> None:
         self._transformer_cache: dict[tuple[str, str], Transformer] = {}
 
-    # ------------------------------------------------------------------
-    # CRS search / discovery
-    # ------------------------------------------------------------------
     def search(self, query: str, limit: int = 50) -> List[CRSInfo]:
-        """Search the bundled EPSG/PROJ database by name, EPSG code, or
-        keyword (country/datum/projection are part of the CRS name text
-        in the PROJ database, so a plain substring search covers them)."""
+        """Search the bundled EPSG/PROJ database by name, EPSG code, or alias."""
         query_norm = query.strip()
         results: List[CRSInfo] = []
+        alias_key = " ".join(query_norm.lower().split())
 
-        # Direct EPSG code lookup, e.g. "20438" or "EPSG:20438"
+        # Explicit aliases for Ain el Abd / UTM zone 38N (EPSG:20438).
+        if alias_key in self._CRS_ALIASES:
+            try:
+                crs = CRS.from_epsg(int(self._CRS_ALIASES[alias_key]))
+                results.append(CRSInfo("EPSG", "20438", crs.name, "PROJECTED_CRS"))
+            except CRSError:
+                pass
+
         code_candidate = query_norm.upper().replace("EPSG:", "").strip()
         if code_candidate.isdigit():
             try:
@@ -44,7 +64,7 @@ class CRSEngine:
             except CRSError:
                 pass
 
-        # Name-based search across common CRS categories
+        # Name-based search across common CRS categories.
         for auth in ("EPSG",):
             for crs_type in (
                 "GEOGRAPHIC_2D_CRS",
@@ -53,13 +73,9 @@ class CRSEngine:
                 "COMPOUND_CRS",
             ):
                 try:
-                    for entry in query_crs_info(
-                        auth_name=auth, pj_types=[crs_type]
-                    ):
+                    for entry in query_crs_info(auth_name=auth, pj_types=[crs_type]):
                         if query_norm.lower() in entry.name.lower() or code_candidate == entry.code:
-                            results.append(
-                                CRSInfo(entry.auth_name, entry.code, entry.name, crs_type)
-                            )
+                            results.append(CRSInfo(entry.auth_name, entry.code, entry.name, crs_type))
                             if len(results) >= limit:
                                 return self._dedupe(results)
                 except Exception:
@@ -78,7 +94,6 @@ class CRSEngine:
         return out
 
     def get_crs_details(self, epsg_or_code: str) -> dict:
-        """Return datum / projection / ellipsoid / units metadata for a CRS."""
         crs = self._resolve_crs(epsg_or_code)
         datum = crs.datum
         ellipsoid = datum.ellipsoid if datum else None
@@ -88,19 +103,13 @@ class CRSEngine:
             "epsg": f"EPSG:{crs.to_epsg()}" if crs.to_epsg() else str(crs.srs),
             "datum": datum.name if datum else "N/A",
             "ellipsoid": ellipsoid.name if ellipsoid else "N/A",
-            "projection": crs.coordinate_operation.method_name
-            if crs.coordinate_operation
-            else "Geographic (no projection)",
+            "projection": crs.coordinate_operation.method_name if crs.coordinate_operation else "Geographic (no projection)",
             "units": axis_units,
             "is_projected": crs.is_projected,
             "is_geographic": crs.is_geographic,
         }
 
-    # ------------------------------------------------------------------
-    # Transformation
-    # ------------------------------------------------------------------
     def _resolve_crs(self, identifier: str) -> CRS:
-        """Accepts 'EPSG:4326', '4326', or a full PROJ/WKT string."""
         ident = identifier.strip()
         try:
             if ident.upper().startswith("EPSG:"):
@@ -108,7 +117,7 @@ class CRSEngine:
             if ident.isdigit():
                 return CRS.from_epsg(int(ident))
             return CRS.from_user_input(ident)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise CRSError(f"Could not resolve CRS '{identifier}': {exc}") from exc
 
     def get_transformer(self, source: str, target: str) -> Transformer:
@@ -116,9 +125,7 @@ class CRSEngine:
         if key not in self._transformer_cache:
             src_crs = self._resolve_crs(source)
             tgt_crs = self._resolve_crs(target)
-            self._transformer_cache[key] = Transformer.from_crs(
-                src_crs, tgt_crs, always_xy=True
-            )
+            self._transformer_cache[key] = Transformer.from_crs(src_crs, tgt_crs, always_xy=True)
         return self._transformer_cache[key]
 
     def transform_point(
@@ -129,8 +136,6 @@ class CRSEngine:
         y: float,
         z: Optional[float] = None,
     ) -> Tuple[float, float, Optional[float]]:
-        """Transform a single point. x/y follow always_xy=True convention:
-        for geographic CRS this means (longitude, latitude)."""
         transformer = self.get_transformer(source, target)
         if z is not None:
             tx, ty, tz = transformer.transform(x, y, z)
@@ -144,37 +149,20 @@ class CRSEngine:
         target: str,
         points: Sequence[PointResult],
     ) -> List[PointResult]:
-        """Batch-transform a sequence of PointResult objects in place-safe
-        fashion (returns a new list). A single bad point never aborts the
-        batch — it is marked FAILED with a message and processing continues."""
         out: List[PointResult] = []
         for p in points:
             if p.src_x is None or p.src_y is None:
-                out.append(
-                    PointResult(
-                        p.name, p.src_x, p.src_y, p.src_z,
-                        status="FAILED", message="Missing source coordinates",
-                    )
-                )
+                out.append(PointResult(p.name, p.src_x, p.src_y, p.src_z, status="FAILED", message="Missing source coordinates"))
                 continue
             try:
-                tx, ty, tz = self.transform_point(
-                    source, target, p.src_x, p.src_y, p.src_z
-                )
+                tx, ty, tz = self.transform_point(source, target, p.src_x, p.src_y, p.src_z)
                 status = "SUCCESS"
                 message = ""
-                if tx != tx or ty != ty:  # NaN check
+                if tx != tx or ty != ty:
                     status, message = "FAILED", "Transformation returned NaN (point likely outside CRS domain)"
-                out.append(
-                    PointResult(p.name, p.src_x, p.src_y, p.src_z, tx, ty, tz, status, message)
-                )
-            except Exception as exc:  # noqa: BLE001
-                out.append(
-                    PointResult(
-                        p.name, p.src_x, p.src_y, p.src_z,
-                        status="FAILED", message=str(exc),
-                    )
-                )
+                out.append(PointResult(p.name, p.src_x, p.src_y, p.src_z, tx, ty, tz, status, message))
+            except Exception as exc:
+                out.append(PointResult(p.name, p.src_x, p.src_y, p.src_z, status="FAILED", message=str(exc)))
         return out
 
     def proj_version(self) -> str:
