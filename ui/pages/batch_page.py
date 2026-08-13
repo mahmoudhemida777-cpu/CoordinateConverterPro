@@ -9,6 +9,7 @@ from core.parsers import csv_parser, xlsx_parser, kml_parser
 from core.exporters.xlsx_exporter import export_xlsx
 from core.batch.batch_processor import find_batch_files, FileResult
 from ui.i18n import tr
+from ui.widgets.crs_picker import CRSPicker
 from ui.pages.history_page import append_history
 from ui.pages.settings_page import current_precision
 
