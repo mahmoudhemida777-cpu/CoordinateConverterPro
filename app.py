@@ -1,13 +1,5 @@
 """
-Coordinate Converter Pro — application entry point.
-
-NOTE ON TESTING: PySide6 is not installable in the offline sandbox this
-project was authored in. This file and everything under ui/ follow the
-standard PySide6 QApplication/QMainWindow pattern but have not been
-executed locally. The GitHub Actions Windows-runner workflow installs
-PySide6 from PyPI and runs the smoke test (scripts/smoke_test.py) that
-actually launches this entry point — treat that as the first real
-execution of the GUI layer.
+MH GeoSuite Pro — application entry point.
 """
 from __future__ import annotations
 
@@ -26,11 +18,25 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout),
     ],
 )
-logger = logging.getLogger("CoordinateConverterPro")
+logger = logging.getLogger("MHGeoSuitePro")
+
+
+def _smoke_test() -> int:
+    """Validate critical frozen imports before starting the GUI."""
+    import numpy  # noqa: F401
+    import ezdxf  # noqa: F401
+    import pandas  # noqa: F401
+    import pyproj  # noqa: F401
+    import openpyxl  # noqa: F401
+    from ui.main_window import MainWindow  # noqa: F401
+    return 0
 
 
 def main() -> int:
-    logger.info("Starting Coordinate Converter Pro")
+    if "--smoke-test" in sys.argv:
+        return _smoke_test()
+
+    logger.info("Starting MH GeoSuite Pro")
     try:
         from PySide6.QtWidgets import QApplication
         from ui.main_window import MainWindow
@@ -39,8 +45,8 @@ def main() -> int:
         raise
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Coordinate Converter Pro")
-    app.setOrganizationName("CoordinateConverterPro")
+    app.setApplicationName("MH GeoSuite Pro")
+    app.setOrganizationName("MHGeoSuitePro")
 
     window = MainWindow()
     window.show()
