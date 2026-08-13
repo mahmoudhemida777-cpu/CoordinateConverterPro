@@ -31,4 +31,9 @@ class CRSInfo:
 
     @property
     def epsg(self) -> str:
+        # Project-local CRS identifiers are intentionally not EPSG authority codes.
+        # Keep the public identifier stable for UI/search/tests instead of rendering
+        # the internal MHLOCAL authority prefix.
+        if self.auth_name == "MHLOCAL":
+            return self.code
         return f"{self.auth_name}:{self.code}"
