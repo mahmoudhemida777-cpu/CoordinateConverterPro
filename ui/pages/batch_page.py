@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, QProgressBar, QListWidget, QListWidgetItem, QMessageBox
 from core.crs.engine import CRSEngine
-from core.parsers import csv_parser, xlsx_parser, kml_parser
+from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
 from core.exporters.xlsx_exporter import export_xlsx
 from core.batch.batch_processor import find_batch_files, FileResult
 from ui.i18n import tr
@@ -13,7 +13,7 @@ from ui.widgets.crs_picker import CRSPicker
 from ui.pages.history_page import append_history
 from ui.pages.settings_page import current_precision
 
-SUPPORTED_FILTER = "Supported coordinate files (*.kmz *.kml *.csv *.xlsx);;KMZ/KML (*.kmz *.kml);;CSV (*.csv);;Excel (*.xlsx)"
+SUPPORTED_FILTER = "Supported coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ/KML (*.kmz *.kml);;CSV (*.csv);;Excel (*.xlsx);;Survey TXT (*.txt)"
 
 
 class BatchPage(QWidget):
@@ -35,51 +35,70 @@ class BatchPage(QWidget):
 
     def load_active_file(self,path:str):
         p=Path(path)
-        if p.is_file(): self.active_file=p; self.folder=None; self._display_files([p],f"Active File: {p.name}"); self.workspace_label.setText(f"Workspace Active File: {p.name}")
-        else: self.active_file=None; self.workspace_label.setText("Workspace: active file not found")
+        if p.is_file():
+            self.active_file=p
+            # Dashboard selection should seed Batch with the whole containing folder,
+            # so Batch can process every supported file in that project in one run.
+            self.folder=p.parent
+            files=find_batch_files(str(self.folder))
+            self._display_files(files, f"Project Folder: {self.folder}")
+            self.workspace_label.setText(f"Workspace Active File: {p.name} | Batch folder: {self.folder}")
+        else:
+            self.active_file=None; self.folder=None; self.workspace_label.setText("Workspace: active file not found")
+
     def _use_active_file(self):
-        if self.active_file and self.active_file.is_file(): self._display_files([self.active_file],f"Active File: {self.active_file.name}")
-        else: QMessageBox.information(self,"No Active File","Select a file in Dashboard first.")
+        if self.active_file and self.active_file.is_file():
+            self.folder=self.active_file.parent
+            files=find_batch_files(str(self.folder))
+            self._display_files(files, f"Project Folder: {self.folder}")
+        else:
+            QMessageBox.information(self,"No Active File","Select a file in Dashboard first.")
+
     def _display_files(self,files,source):
         self.selected_files=list(files); self.results_list.clear(); self.progress.setValue(0); self.progress.setMaximum(max(len(files),1)); self.folder_label.setText(source); self.progress_label.setText(f"{len(files)} file(s) ready for CRS conversion")
         for p in files:self.results_list.addItem(QListWidgetItem(f"READY — {p.name} | {p}"))
+
     def _choose_folder(self):
         folder=QFileDialog.getExistingDirectory(self,tr("Choose Folder"))
-        if folder:self.folder=folder; self.active_file=None; self._scan_folder()
+        if folder:
+            self.folder=folder; self.active_file=None; self._scan_folder()
+
     def _scan_folder(self):
-        try:self._display_files(find_batch_files(self.folder),f"Folder: {self.folder}")
+        if not self.folder:return
+        try:self._display_files(find_batch_files(str(self.folder)),f"Project Folder: {self.folder}")
         except Exception as e:QMessageBox.critical(self,"Scan Error",str(e))
+
     def _refresh_scan(self):
         if self.folder:self._scan_folder()
         elif self.selected_files:self._display_files(self.selected_files,"Selected files")
         elif self.active_file:self._use_active_file()
+
     def _choose_files(self):
         paths,_=QFileDialog.getOpenFileNames(self,"Choose Coordinate Files","",SUPPORTED_FILTER)
-        if paths:self.folder=None; self.active_file=None; self._display_files([Path(p) for p in paths if Path(p).is_file()],f"Selected files: {len(paths)}")
+        if paths:
+            self.folder=None; self.active_file=None
+            files=[Path(p) for p in paths if Path(p).is_file()]
+            self._display_files(files,f"Selected files: {len(files)}")
 
     def _parse_file(self,path):
         s=path.suffix.casefold()
         if s==".kmz":return kml_parser.parse_kmz_file(str(path))
         if s==".kml":return kml_parser.parse_kml_file(str(path))
-        if s==".csv":
-            c=csv_parser.sniff_columns(str(path)); return csv_parser.parse_csv(str(path),csv_parser.ColumnMapping(c[0],c[1],c[2],c[3] if len(c)>3 else None))
+        if s==".csv":return csv_parser.parse_csv_auto(str(path))
         if s==".xlsx":
             c=xlsx_parser.sniff_columns(str(path)); return xlsx_parser.parse_xlsx(str(path),xlsx_parser.ColumnMapping(c[0],c[1],c[2],c[3] if len(c)>3 else None))
+        if s==".txt":return txt_parser.parse_txt(str(path))
         raise ValueError(f"Unsupported file type: {s}")
 
     def _source_for_file(self, path: Path, selected_source: str) -> str:
-        """KML/KMZ coordinates are defined as longitude/latitude (WGS84).
-        Always display and use EPSG:4326 so the UI matches the actual 2D
-        geographic coordinate convention in KML/KMZ, even if a previous
-        3D WGS84 selection (EPSG:4979) was persisted.
-        """
+        """KML/KMZ coordinates are defined as longitude/latitude (WGS84)."""
         if path.suffix.casefold() in {".kml", ".kmz"}:
             self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
             return "EPSG:4326"
         return selected_source
 
     def _run_batch(self):
-        files=find_batch_files(self.folder) if self.folder else list(self.selected_files)
+        files=find_batch_files(str(self.folder)) if self.folder else list(self.selected_files)
         if not files:QMessageBox.warning(self,"No files","No supported coordinate files selected."); return
         selected_src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
         if not selected_src or not tgt:QMessageBox.warning(self,"No CRS","Select both Source CRS and Target CRS."); return
