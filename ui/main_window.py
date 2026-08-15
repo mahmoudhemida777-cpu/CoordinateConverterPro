@@ -1,7 +1,7 @@
 """Main application window: sidebar + stacked pages."""
 from __future__ import annotations
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMainWindow,QWidget,QHBoxLayout,QListWidget,QListWidgetItem,QStackedWidget,QStyle
+from PySide6.QtWidgets import QMainWindow,QWidget,QHBoxLayout,QVBoxLayout,QLabel,QListWidget,QListWidgetItem,QStackedWidget,QStyle
 from ui.pages.dashboard_page import DashboardPage
 from ui.pages.import_page import ImportPage
 from ui.pages.converter_page import ConverterPage
@@ -25,32 +25,30 @@ class MainWindow(QMainWindow):
         for key,label in SIDEBAR_ITEMS:
             item=QListWidgetItem(tr(label)); item.setData(Qt.UserRole,key); self.sidebar.addItem(item)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_changed)
+        right=QWidget(); right_layout=QVBoxLayout(right); right_layout.setContentsMargins(0,0,0,0); right_layout.setSpacing(0)
+        self.workspace_banner=QLabel("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard"); self.workspace_banner.setStyleSheet("background:#1F3864;color:white;padding:8px 14px;font-weight:bold;"); right_layout.addWidget(self.workspace_banner)
         self.stack=QStackedWidget(); self.pages={"dashboard":DashboardPage(),"import":ImportPage(),"converter":ConverterPage(),"survey":SurveyPage(),"cad":CadPage(),"batch":BatchPage(),"map":MapPage(),"history":HistoryPage(),"settings":SettingsPage(),"about":AboutPage()}
-        for key,_ in SIDEBAR_ITEMS: self.stack.addWidget(self.pages[key])
-        self.pages["dashboard"].file_selected.connect(self._set_active_file)
-        self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder)
-        self.pages["batch"].batch_completed.connect(self._on_batch_completed)
-        layout.addWidget(self.sidebar); layout.addWidget(self.stack); self.sidebar.setCurrentRow(0); self.statusBar().showMessage(tr("Ready"))
+        for key,_ in SIDEBAR_ITEMS:self.stack.addWidget(self.pages[key])
+        self.pages["dashboard"].file_selected.connect(self._set_active_file); self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder); self.pages["batch"].batch_completed.connect(self._on_batch_completed)
+        right_layout.addWidget(self.stack); layout.addWidget(self.sidebar); layout.addWidget(right); self.sidebar.setCurrentRow(0); self.statusBar().showMessage(tr("Ready"))
 
-    def _set_workspace_folder(self, folder: str):
-        self.workspace_folder = folder
+    def _set_workspace_folder(self,folder:str):
+        self.workspace_folder=folder; self.workspace_banner.setText(f"PROJECT WORKSPACE: {folder}  |  Shared across all pages")
         for page in self.pages.values():
-            setter = getattr(page, "set_workspace_folder", None)
-            if callable(setter): setter(folder)
+            setter=getattr(page,"set_workspace_folder",None)
+            if callable(setter):setter(folder)
         self.statusBar().showMessage(f"Project Folder: {folder} — shared workspace")
 
     def _set_active_file(self,path:str):
         for key in ("import","converter","cad","batch","map"):
             loader=getattr(self.pages[key],"load_active_file",None)
-            if callable(loader): loader(path)
+            if callable(loader):loader(path)
         self.statusBar().showMessage(f"Active File: {path}")
 
     def _on_batch_completed(self,output_paths:list,target_crs:str,source_crs:str):
         if output_paths:
-            cad=self.pages["cad"]
-            loader=getattr(cad,"_load_batch_converted_xlsx",None)
-            if callable(loader) and loader(output_paths[0]):
-                self.statusBar().showMessage(f"Batch result ready for CAD/Civil 3D: {output_paths[0]}")
+            cad=self.pages["cad"]; loader=getattr(cad,"_load_batch_converted_xlsx",None)
+            if callable(loader) and loader(output_paths[0]):self.statusBar().showMessage(f"Batch result ready for CAD/Civil 3D: {output_paths[0]}")
 
     def _on_sidebar_changed(self,row:int):
         key,_=SIDEBAR_ITEMS[row]; self.stack.setCurrentWidget(self.pages[key])
