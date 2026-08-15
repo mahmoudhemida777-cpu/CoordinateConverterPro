@@ -11,9 +11,9 @@ so that the non-GUI, non-pyproj, non-ezdxf modules are genuinely verified
 in this environment right now, rather than only claimed to work.
 
 Modules requiring pyproj (CRS engine) or ezdxf (DXF export) or PySide6
-(UI) are NOT exercised here — they are unavailable offline. They are
-exercised by tests/test_crs_engine.py and tests/test_dxf_exporter.py on
-CI, and the UI is exercised by the CI smoke test.
+(UI) are NOT exercised here — they are exercised by tests/test_crs_engine.py
+and tests/test_dxf_exporter.py on CI, and the UI is exercised by the CI
+smoke test.
 """
 import csv
 import sys
@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.models import PointResult
-from core.parsers import csv_parser, xlsx_parser, kml_parser
+from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
 from core.exporters import xlsx_exporter, csv_exporter
 from core.validation.validator import validate_points, validate_zone_consistency
 from core.batch.batch_processor import find_batch_files, run_batch, FileResult
@@ -106,6 +106,19 @@ class TestXLSXParserAndExporter(unittest.TestCase):
         self.assertIn("SUCCESS", content)
 
 
+class TestTXTParser(unittest.TestCase):
+    def test_parse_txt_e_n_z(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "points.txt"
+            path.write_text("Easting,Northing,Elevation\n500000,2740000,650.5\n")
+            points = txt_parser.parse_txt(str(path))
+            self.assertEqual(len(points), 1)
+            self.assertEqual(points[0].name, "PT-1")
+            self.assertAlmostEqual(points[0].src_x, 500000.0)
+            self.assertAlmostEqual(points[0].src_y, 2740000.0)
+            self.assertAlmostEqual(points[0].src_z, 650.5)
+
+
 class TestKMLParser(unittest.TestCase):
     SAMPLE = b"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2"><Document>
@@ -165,9 +178,9 @@ class TestValidation(unittest.TestCase):
 class TestBatchProcessor(unittest.TestCase):
     def test_batch_continues_after_failure(self):
         with tempfile.TemporaryDirectory() as d:
-            for name in ["a.csv", "b.xlsx", "c.kmz", "d.kml"]:
+            for name in ["a.csv", "b.xlsx", "c.kmz", "d.kml", "e.txt"]:
                 (Path(d) / name).write_text("x")
-            (Path(d) / "ignored.txt").write_text("x")
+            (Path(d) / "ignored.pdf").write_text("x")
 
             def process(path):
                 if path.name == "b.xlsx":
@@ -175,10 +188,10 @@ class TestBatchProcessor(unittest.TestCase):
                 return FileResult(str(path), "SUCCESS", 1, 1)
 
             files = find_batch_files(d)
-            self.assertEqual(len(files), 4)  # ignored.txt excluded
+            self.assertEqual(len(files), 5)
 
             report = run_batch(d, process)
-            self.assertEqual(report.success_count, 3)
+            self.assertEqual(report.success_count, 4)
             self.assertEqual(report.failed_count, 1)
 
 
