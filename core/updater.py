@@ -26,10 +26,13 @@ def latest_release() -> tuple[str, str] | None:
         req = urllib.request.Request(LATEST_API, headers={"User-Agent": "MH-GeoSuite-Pro"})
         with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode("utf-8"))
-        tag = str(data.get("tag_name", "")).strip()
-        if not tag:
+        # The rolling release uses the fixed tag "latest"; its title carries the real app version.
+        title = str(data.get("name", "")).strip()
+        match = re.search(r"v?(\d+(?:\.\d+){1,3})", title)
+        version = match.group(1) if match else ""
+        if not version:
             return None
-        return tag, str(data.get("html_url", ""))
+        return version, str(data.get("html_url", ""))
     except Exception:
         return None
 
@@ -38,10 +41,10 @@ def check_for_update(current_version: str) -> tuple[str, str] | None:
     latest = latest_release()
     if not latest:
         return None
-    tag, page_url = latest
-    if _version_tuple(tag) <= _version_tuple(current_version):
+    version, page_url = latest
+    if _version_tuple(version) <= _version_tuple(current_version):
         return None
-    return tag, page_url
+    return version, page_url
 
 
 def install_latest_windows(parent=None) -> bool:
