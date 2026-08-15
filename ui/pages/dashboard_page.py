@@ -22,6 +22,7 @@ class MetricCard(QFrame):
 
 class DashboardPage(QWidget):
     file_selected = Signal(str)
+    folder_selected = Signal(str)
 
     def __init__(self):
         super().__init__(); self.folder = None; self.active_file = None
@@ -43,7 +44,10 @@ class DashboardPage(QWidget):
 
     def _scan_folder(self):
         folder=QFileDialog.getExistingDirectory(self,"Select Project Folder")
-        if folder: self.folder=folder; self.refresh()
+        if folder:
+            self.folder=folder
+            self.refresh()
+            self.folder_selected.emit(folder)
 
     def refresh(self):
         if not self.folder: return
@@ -54,7 +58,11 @@ class DashboardPage(QWidget):
             formats.add(p.suffix.lower()); row=self.table.rowCount(); self.table.insertRow(row)
             vals=[p.name,p.suffix.upper().lstrip('.'),f"{p.stat().st_size/1024:.1f} KB",datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M'),str(p)]
             for c,v in enumerate(vals): self.table.setItem(row,c,QTableWidgetItem(v))
-        self.files.set_value(str(len(files))); self.formats.set_value(str(len(formats))); self.status.setText(f"Scanned: {len(files)} supported file(s)")
+        self.files.set_value(str(len(files))); self.formats.set_value(str(len(formats))); self.status.setText(f"Scanned: {len(files)} supported file(s) — workspace shared across pages")
+
+    def set_workspace_folder(self, folder: str):
+        self.folder = folder
+        self.refresh()
 
     def _use_selected_file(self):
         row=self.table.currentRow()
