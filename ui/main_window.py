@@ -19,7 +19,7 @@ SIDEBAR_ITEMS=[("dashboard","Dashboard"),("import","Import"),("converter","CRS C
 
 class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__(); self.setWindowTitle(APP_NAME); self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)); self.resize(1200,800)
+        super().__init__(); self.setWindowTitle(APP_NAME); self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)); self.resize(1200,800); self.workspace_folder=None
         central=QWidget(); self.setCentralWidget(central); layout=QHBoxLayout(central); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
         self.sidebar=QListWidget(); self.sidebar.setFixedWidth(200); self.sidebar.setObjectName("sidebar")
         for key,label in SIDEBAR_ITEMS:
@@ -28,8 +28,16 @@ class MainWindow(QMainWindow):
         self.stack=QStackedWidget(); self.pages={"dashboard":DashboardPage(),"import":ImportPage(),"converter":ConverterPage(),"survey":SurveyPage(),"cad":CadPage(),"batch":BatchPage(),"map":MapPage(),"history":HistoryPage(),"settings":SettingsPage(),"about":AboutPage()}
         for key,_ in SIDEBAR_ITEMS: self.stack.addWidget(self.pages[key])
         self.pages["dashboard"].file_selected.connect(self._set_active_file)
+        self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder)
         self.pages["batch"].batch_completed.connect(self._on_batch_completed)
         layout.addWidget(self.sidebar); layout.addWidget(self.stack); self.sidebar.setCurrentRow(0); self.statusBar().showMessage(tr("Ready"))
+
+    def _set_workspace_folder(self, folder: str):
+        self.workspace_folder = folder
+        for page in self.pages.values():
+            setter = getattr(page, "set_workspace_folder", None)
+            if callable(setter): setter(folder)
+        self.statusBar().showMessage(f"Project Folder: {folder} — shared workspace")
 
     def _set_active_file(self,path:str):
         for key in ("import","converter","cad","batch","map"):
@@ -38,7 +46,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Active File: {path}")
 
     def _on_batch_completed(self,output_paths:list,target_crs:str,source_crs:str):
-        # The first successful converted workbook becomes the CAD/Civil 3D workspace result.
         if output_paths:
             cad=self.pages["cad"]
             loader=getattr(cad,"_load_batch_converted_xlsx",None)
