@@ -98,10 +98,20 @@ jobs:
         run: |
           $version = (Select-String -Path "core\version.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
           if ([string]::IsNullOrWhiteSpace($version)) { $version = "0.0.0" }
+
           gh release view latest 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create latest --target main --title "MH GeoSuite Pro v$version" --notes "Rolling release used by the in-app automatic updater."
           } else {
             gh release edit latest --title "MH GeoSuite Pro v$version" --notes "Rolling release used by the in-app automatic updater."
           }
-          gh release upload latest "MH_GeoSuite_Pro-Windows.zip" --clobber
+
+          # Replace the fixed updater asset explicitly instead of relying on
+          # `gh release upload --clobber`, which can return HTTP 404 for an
+          # existing asset on a rolling release.
+          gh release delete-asset latest "MH_GeoSuite_Pro-Windows.zip" --yes 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "No previous rolling Windows asset to delete."
+          }
+
+          gh release upload latest "MH_GeoSuite_Pro-Windows.zip"
