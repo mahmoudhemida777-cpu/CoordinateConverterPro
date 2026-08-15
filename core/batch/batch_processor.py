@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
-SUPPORTED_EXTENSIONS = {".kmz", ".kml", ".csv", ".xlsx"}
+SUPPORTED_EXTENSIONS = {".kmz", ".kml", ".csv", ".xlsx", ".txt"}
 OUTPUT_SUFFIX = "_converted.xlsx"
 
 
@@ -38,12 +38,7 @@ class BatchReport:
 
 
 def find_batch_files(folder: str) -> List[Path]:
-    """Discover supported files recursively on Windows, case-insensitively.
-
-    Uses os.walk instead of Path.rglob so folders containing Windows junctions,
-    OneDrive placeholders, or unusual directory entries do not prevent the
-    remaining files from being discovered.
-    """
+    """Discover supported survey files recursively, including TXT, case-insensitively."""
     root = Path(folder).expanduser()
     if not root.exists() or not root.is_dir():
         return []
