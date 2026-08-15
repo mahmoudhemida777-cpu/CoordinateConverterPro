@@ -115,3 +115,6 @@ jobs:
           }
 
           gh release upload latest "MH_GeoSuite_Pro-Windows.zip"
+
+      # Keep the Windows release pipeline tied to the same tested commit.
+      # This marker also forces a fresh release run whenever the workflow is repaired.
