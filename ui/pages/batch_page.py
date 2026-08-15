@@ -37,26 +37,35 @@ class BatchPage(QWidget):
         p=Path(path)
         if p.is_file():
             self.active_file=p
-            # Dashboard selection should seed Batch with the whole containing folder,
-            # so Batch can process every supported file in that project in one run.
             self.folder=p.parent
             files=find_batch_files(str(self.folder))
             self._display_files(files, f"Project Folder: {self.folder}")
             self.workspace_label.setText(f"Workspace Active File: {p.name} | Batch folder: {self.folder}")
         else:
-            self.active_file=None; self.folder=None; self.workspace_label.setText("Workspace: active file not found")
+            self.active_file=None; self.folder=None; self.selected_files=[]; self.workspace_label.setText("Workspace: active file not found")
 
     def _use_active_file(self):
         if self.active_file and self.active_file.is_file():
             self.folder=self.active_file.parent
             files=find_batch_files(str(self.folder))
             self._display_files(files, f"Project Folder: {self.folder}")
+            self.workspace_label.setText(f"Workspace Active File: {self.active_file.name} | Batch folder: {self.folder}")
         else:
             QMessageBox.information(self,"No Active File","Select a file in Dashboard first.")
 
     def _display_files(self,files,source):
-        self.selected_files=list(files); self.results_list.clear(); self.progress.setValue(0); self.progress.setMaximum(max(len(files),1)); self.folder_label.setText(source); self.progress_label.setText(f"{len(files)} file(s) ready for CRS conversion")
-        for p in files:self.results_list.addItem(QListWidgetItem(f"READY — {p.name} | {p}"))
+        normalized=[]
+        seen=set()
+        for raw in files:
+            p=Path(raw)
+            if not p.is_file(): continue
+            key=str(p.resolve()).casefold()
+            if key in seen: continue
+            seen.add(key); normalized.append(p)
+        self.selected_files=sorted(normalized,key=lambda p:str(p).casefold())
+        self.results_list.clear(); self.progress.setValue(0); self.progress.setMaximum(max(len(self.selected_files),1)); self.folder_label.setText(source)
+        self.progress_label.setText(f"{len(self.selected_files)} file(s) ready for CRS conversion — TXT/CSV/XLSX/KML/KMZ included")
+        for p in self.selected_files:self.results_list.addItem(QListWidgetItem(f"READY — {p.name} | {p}"))
 
     def _choose_folder(self):
         folder=QFileDialog.getExistingDirectory(self,tr("Choose Folder"))
@@ -98,7 +107,12 @@ class BatchPage(QWidget):
         return selected_source
 
     def _run_batch(self):
-        files=find_batch_files(str(self.folder)) if self.folder else list(self.selected_files)
+        # The visible scanned/selected list is the authoritative batch set.
+        # Do not silently rescan a folder here, because that can make the list
+        # shown to the user differ from the files actually processed.
+        files=list(self.selected_files)
+        if not files and self.folder:
+            self._scan_folder(); files=list(self.selected_files)
         if not files:QMessageBox.warning(self,"No files","No supported coordinate files selected."); return
         selected_src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
         if not selected_src or not tgt:QMessageBox.warning(self,"No CRS","Select both Source CRS and Target CRS."); return
