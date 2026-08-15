@@ -2,7 +2,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 import openpyxl
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFileDialog,QTableWidget,QTableWidgetItem,QProgressBar,QMessageBox,QGroupBox
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFileDialog,QTableWidget,QTableWidgetItem,QProgressBar,QMessageBox,QGroupBox,QCheckBox
 from core.crs.engine import CRSEngine
 from core.models import PointResult
 from core.parsers import csv_parser,xlsx_parser,kml_parser,txt_parser
@@ -13,31 +13,40 @@ from ui.widgets.workspace_bar import WorkspaceFileBar
 from ui.pages.import_page import ColumnMappingDialog
 from ui.pages.settings_page import current_precision
 
-COORDINATE_FILTER = "Coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ/KML (*.kmz *.kml);;CSV (*.csv);;Excel (*.xlsx);;Survey TXT (*.txt);;All files (*.*)"
+COORDINATE_FILTER="Coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ/KML (*.kmz *.kml);;CSV (*.csv);;Excel (*.xlsx);;Survey TXT (*.txt);;All files (*.*)"
 
 class CadPage(QWidget):
     def __init__(self)->None:
         super().__init__(); self.engine=CRSEngine(); self.source_points=[]; self.result_points=[]; self.current_file=None; self.batch_converted=False; self.workspace_folder=None
-        root=QVBoxLayout(self); root.setContentsMargins(30,20,30,20); title=QLabel("AutoCAD / Civil 3D Export"); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;"); root.addWidget(title); root.addWidget(QLabel("Select any project file below. Its points and conversion results stay isolated from the previous file."))
+        root=QVBoxLayout(self); root.setContentsMargins(30,20,30,20)
+        title=QLabel("AutoCAD / Civil 3D Export"); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
+        root.addWidget(QLabel("Load ordinary survey points and export them directly to CAD, or convert between CRS before export."))
         self.workspace_bar=WorkspaceFileBar(); self.workspace_bar.file_selected.connect(self._load_path); root.addWidget(self.workspace_bar)
         row=QHBoxLayout(); choose=QPushButton("Choose Coordinate File"); choose.clicked.connect(self._choose_file); row.addWidget(choose); self.file_label=QLabel("No file selected"); self.file_label.setStyleSheet("color:#777;"); row.addWidget(self.file_label); row.addStretch(); root.addLayout(row)
+        self.direct_mode=QCheckBox("DIRECT CAD EXPORT — use the loaded coordinates exactly as they are (NO CRS conversion)"); self.direct_mode.setChecked(False); self.direct_mode.stateChanged.connect(self._mode_changed); root.addWidget(self.direct_mode)
         crs_row=QHBoxLayout(); self.source_picker=CRSPicker(self.engine,tr("SOURCE CRS")); self.target_picker=CRSPicker(self.engine,tr("TARGET CRS")); crs_row.addWidget(self.source_picker); crs_row.addWidget(self.target_picker); root.addLayout(crs_row)
-        convert=QPushButton("CONVERT FOR CAD / CIVIL 3D"); convert.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:9px 24px;"); convert.clicked.connect(self._convert); root.addWidget(convert); self.progress=QProgressBar(); root.addWidget(self.progress)
+        convert=QPushButton("CONVERT FOR CAD / CIVIL 3D"); convert.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:9px 24px;"); convert.clicked.connect(self._convert); root.addWidget(convert)
+        self.progress=QProgressBar(); root.addWidget(self.progress)
         summary=QGroupBox(); sl=QHBoxLayout(summary); self.total=QLabel("Points: 0"); self.success=QLabel("Success: 0"); self.failed=QLabel("Failed: 0"); [sl.addWidget(w) for w in (self.total,self.success,self.failed)]; root.addWidget(summary)
         self.table=QTableWidget(0,6); self.table.setHorizontalHeaderLabels(["Point","Easting / X","Northing / Y","Elevation","Status","Message"]); root.addWidget(self.table)
-        export_row=QHBoxLayout(); dxf=QPushButton("EXPORT DXF — AutoCAD / Civil 3D"); dxf.clicked.connect(self._export_dxf); civil=QPushButton("EXPORT CSV — Civil 3D Points"); civil.clicked.connect(self._export_civil3d_csv); export_row.addWidget(dxf); export_row.addWidget(civil); root.addLayout(export_row)
+        export_row=QHBoxLayout(); dxf=QPushButton("EXPORT DXF — AutoCAD / Civil 3D"); dxf.clicked.connect(self._export_dxf); export_row.addWidget(dxf); civil=QPushButton("EXPORT CSV — Civil 3D Points"); civil.clicked.connect(self._export_civil3d_csv); export_row.addWidget(civil); root.addLayout(export_row)
 
-    def set_workspace_folder(self,folder:str):
-        self.workspace_folder=folder; self.workspace_bar.set_folder(folder,self.current_file)
+    def set_workspace_folder(self,folder:str): self.workspace_folder=folder; self.workspace_bar.set_folder(folder,self.current_file)
     def load_active_file(self,path:str)->None:
         if path and Path(path).is_file(): self.workspace_folder=str(Path(path).parent); self.workspace_bar.set_folder(self.workspace_folder,path); self._load_path(path)
     def _choose_file(self)->None:
         path,_=QFileDialog.getOpenFileName(self,"Choose Coordinate File",self.workspace_folder or "",COORDINATE_FILTER)
         if path:self._load_path(path)
+    def _mode_changed(self)->None:
+        direct=self.direct_mode.isChecked(); self.source_picker.setEnabled(not direct); self.target_picker.setEnabled(not direct)
+        if direct and self.source_points:
+            self.result_points=[PointResult(p.name,p.src_x,p.src_y,p.src_z,p.src_x,p.src_y,p.src_z,status="SUCCESS",message="DIRECT — no CRS conversion") for p in self.source_points]
+            self.progress.setMaximum(len(self.result_points)); self.progress.setValue(len(self.result_points)); self._populate()
+        elif not direct and self.result_points and all("DIRECT" in (p.message or "") for p in self.result_points):
+            self.result_points=[]; self._populate()
     def _load_path(self,path:str)->None:
         file_path=Path(path)
-        if file_path.stem.endswith("_converted") and file_path.suffix.casefold()==".xlsx":
-            if self._load_batch_converted_xlsx(path): return
+        if file_path.stem.endswith("_converted") and file_path.suffix.casefold()==".xlsx" and self._load_batch_converted_xlsx(path): return
         try:
             suffix=file_path.suffix.casefold()
             if suffix==".kmz":points=kml_parser.parse_kmz_file(path)
@@ -56,16 +65,13 @@ class CadPage(QWidget):
         except Exception as exc:QMessageBox.critical(self,"Import Error",str(exc));return
         self.batch_converted=False; self.source_points=list(points); self.result_points=[]; self.current_file=str(file_path); self.file_label.setText(f"{file_path.name} — {len(points)} points loaded"); self.table.clearContents(); self.table.setRowCount(0); self.total.setText(f"Points: {len(points)}"); self.success.setText("Success: 0"); self.failed.setText("Failed: 0"); self.progress.setMaximum(len(points)); self.progress.setValue(0)
         if suffix in {".kml",".kmz"}: self.source_picker.set_selected("EPSG:4326","WGS 84 — Geographic 2D (Latitude / Longitude)")
-
+        if self.direct_mode.isChecked(): self._mode_changed()
     def _load_batch_converted_xlsx(self,path:str)->bool:
         try:
-            wb=openpyxl.load_workbook(path,read_only=True,data_only=True); ws=wb["Points"] if "Points" in wb.sheetnames else wb.active; rows=list(ws.iter_rows(values_only=True)); info=wb["Project Info"] if "Project Info" in wb.sheetnames else None; target_crs=None; source_crs=None
+            wb=openpyxl.load_workbook(path,read_only=True,data_only=True); ws=wb["Points"] if "Points" in wb.sheetnames else wb.active; rows=list(ws.iter_rows(values_only=True)); info=wb["Project Info"] if "Project Info" in wb.sheetnames else None; target_crs=None
             if info:
                 for row in info.iter_rows(values_only=True):
-                    if not row:continue
-                    key=str(row[0]).strip() if row[0] is not None else ""; value=str(row[1]).strip() if len(row)>1 and row[1] else None
-                    if key=="Target CRS":target_crs=value
-                    elif key=="Source CRS":source_crs=value
+                    if row and str(row[0]).strip()=="Target CRS" and len(row)>1: target_crs=str(row[1]).strip()
             wb.close()
             if not rows:return False
             headers=[str(x).strip() if x is not None else "" for x in rows[0]]; idx={h:i for i,h in enumerate(headers)}
@@ -76,9 +82,8 @@ class CadPage(QWidget):
                     sx=float(row[idx["Source X"]]) if "Source X" in idx and row[idx["Source X"]] is not None else None; sy=float(row[idx["Source Y"]]) if "Source Y" in idx and row[idx["Source Y"]] is not None else None; sz=float(row[idx["Source Z"]]) if "Source Z" in idx and row[idx["Source Z"]] is not None else None; x=float(row[idx["Target X"]]); y=float(row[idx["Target Y"]]); z=float(row[idx["Target Z"]]) if "Target Z" in idx and row[idx["Target Z"]] is not None else None; name=str(row[idx["Point Name"]]) if row[idx["Point Name"]] is not None else f"PT-{n}"; status=str(row[idx["Status"]]) if "Status" in idx else "SUCCESS"; message=str(row[idx["Message"]]) if "Message" in idx and row[idx["Message"]] else ""; pts.append(PointResult(name,sx,sy,sz,x,y,z,status=status,message=message))
                 except (TypeError,ValueError,IndexError):continue
             if not pts:return False
-            success=sum(p.status=="SUCCESS" for p in pts)
-            if success==0:QMessageBox.warning(self,"Invalid Batch Result","The batch workbook contains no successful transformed points. Please rerun Batch Converter with the correct Source CRS.");return True
-            self.batch_converted=True; self.source_points=pts; self.result_points=pts; self.current_file=path; label=f"{Path(path).name} — {len(pts)} points — ALREADY CONVERTED"+(f" — {target_crs}" if target_crs else ""); self.file_label.setText(label); self._set_crs_both(target_crs); self.progress.setMaximum(len(pts)); self.progress.setValue(len(pts)); self._populate(); return True
+            if sum(p.status=="SUCCESS" for p in pts)==0:QMessageBox.warning(self,"Invalid Batch Result","The batch workbook contains no successful transformed points.");return True
+            self.batch_converted=True; self.source_points=pts; self.result_points=pts; self.current_file=path; self.file_label.setText(f"{Path(path).name} — {len(pts)} points — ALREADY CONVERTED"+(f" — {target_crs}" if target_crs else "")); self._set_crs_both(target_crs); self.progress.setMaximum(len(pts)); self.progress.setValue(len(pts)); self._populate(); return True
         except Exception as exc:QMessageBox.critical(self,"Batch Result Error",f"Could not load batch-converted file:\n{exc}");return False
     def _set_crs_both(self,epsg):
         if not epsg:return
@@ -86,6 +91,7 @@ class CadPage(QWidget):
         except Exception:name=epsg
         self.source_picker.set_selected(epsg,name);self.target_picker.set_selected(epsg,name)
     def _convert(self)->None:
+        if self.direct_mode.isChecked(): self._mode_changed(); return
         if self.batch_converted:QMessageBox.information(self,"Already Converted","This file was produced by Batch Converter and is already in the target CRS. Export it directly to DXF or Civil 3D CSV.");return
         if not self.source_points:QMessageBox.warning(self,"No data","Choose a coordinate file first.");return
         src=self.source_picker.selected_epsg();tgt=self.target_picker.selected_epsg()
@@ -94,26 +100,34 @@ class CadPage(QWidget):
         for i,point in enumerate(self.source_points,1):self.result_points.append(self.engine.transform_points(src,tgt,[point])[0]);self.progress.setValue(i)
         self._populate()
     def _populate(self):
-        pts=self.result_points;precision=current_precision();self.total.setText(f"Points: {len(pts)}");self.success.setText(f"Success: {sum(p.status=='SUCCESS' for p in pts)}");self.failed.setText(f"Failed: {sum(p.status=='FAILED' for p in pts)}");self.table.setRowCount(len(pts))
+        pts=self.result_points;precision=current_precision();self.total.setText(f"Points: {len(self.source_points) if self.source_points else len(pts)}");self.success.setText(f"Success: {sum(p.status=='SUCCESS' for p in pts)}");self.failed.setText(f"Failed: {sum(p.status=='FAILED' for p in pts)}");self.table.setRowCount(len(pts))
         def fmt(v):return "" if v is None else (f"{v:.{precision}f}" if isinstance(v,(int,float)) else str(v))
         for i,p in enumerate(pts):
             for j,value in enumerate([p.name,p.tgt_x,p.tgt_y,p.tgt_z,p.status,p.message]):self.table.setItem(i,j,QTableWidgetItem(fmt(value)))
     def _export_dxf(self)->None:
-        valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None]
-        if not valid:QMessageBox.warning(self,"Nothing to export","There are no validated target coordinates to export.");return
+        if self.direct_mode.isChecked() and self.source_points:
+            valid=[p for p in self.source_points if p.src_x is not None and p.src_y is not None]
+            export_points=[PointResult(p.name,p.src_x,p.src_y,p.src_z,p.src_x,p.src_y,p.src_z,status="SUCCESS",message="DIRECT — no CRS conversion") for p in valid]
+            if not export_points:QMessageBox.warning(self,"Nothing to export","No valid X/Y coordinates found in the selected file.");return
+        else: valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None]; export_points=valid
+        if not export_points:QMessageBox.warning(self,"Nothing to export","There are no validated coordinates to export.");return
         path,_=QFileDialog.getSaveFileName(self,"Export DXF","CAD_Points.dxf","AutoCAD DXF (*.dxf)")
         if not path:return
-        try:export_dxf(valid,path,label_mode=LabelMode.NAME,text_height=1.0,use_target_coords=True);QMessageBox.information(self,"DXF Exported",f"DXF created successfully:\n{path}")
+        try:export_dxf(export_points,path,label_mode=LabelMode.NAME,text_height=1.0,use_target_coords=True);QMessageBox.information(self,"DXF Exported",f"DXF created successfully:\n{path}")
         except Exception as exc:QMessageBox.critical(self,"DXF Export Error",str(exc))
     def _export_civil3d_csv(self)->None:
-        valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None]
-        if not valid:QMessageBox.warning(self,"Nothing to export","There are no validated target coordinates to export.");return
+        if self.direct_mode.isChecked() and self.source_points:
+            valid=[p for p in self.source_points if p.src_x is not None and p.src_y is not None]
+            rows=[(p.src_x,p.src_y,p.src_z,p.name) for p in valid]
+        else:
+            valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None]; rows=[(p.tgt_x,p.tgt_y,p.tgt_z,p.name) for p in valid]
+        if not rows:QMessageBox.warning(self,"Nothing to export","There are no valid coordinates to export.");return
         path,_=QFileDialog.getSaveFileName(self,"Export Civil 3D CSV","Civil3D_Points.csv","CSV (*.csv)")
         if not path:return
         try:
             precision=current_precision()
             with open(path,"w",newline="",encoding="utf-8-sig") as f:
                 writer=csv.writer(f);writer.writerow(["Point Number","Easting","Northing","Elevation","Description"])
-                for i,p in enumerate(valid,1):writer.writerow([i,f"{p.tgt_x:.{precision}f}",f"{p.tgt_y:.{precision}f}",f"{(p.tgt_z or 0):.{precision}f}",p.name])
+                for i,(x,y,z,name) in enumerate(rows,1):writer.writerow([i,f"{x:.{precision}f}",f"{y:.{precision}f}",f"{(z or 0):.{precision}f}",name])
             QMessageBox.information(self,"Civil 3D CSV Exported",f"Civil 3D point file created:\n{path}")
         except Exception as exc:QMessageBox.critical(self,"CSV Export Error",str(exc))
