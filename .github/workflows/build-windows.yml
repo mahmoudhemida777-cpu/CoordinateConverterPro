@@ -87,3 +87,18 @@ jobs:
           name: MH-GeoSuite-Pro-Windows
           path: MH_GeoSuite_Pro-Windows.zip
           if-no-files-found: error
+
+      - name: Publish rolling Latest release for automatic updates
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Select-String -Path "core\version.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+          if ([string]::IsNullOrWhiteSpace($version)) { $version = "0.0.0" }
+          gh release view latest 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create latest --target main --title "MH GeoSuite Pro v$version" --notes "Rolling release used by the in-app automatic updater."
+          } else {
+            gh release edit latest --title "MH GeoSuite Pro v$version" --notes "Rolling release used by the in-app automatic updater."
+          }
+          gh release upload latest "MH_GeoSuite_Pro-Windows.zip" --clobber
