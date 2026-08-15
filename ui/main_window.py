@@ -5,9 +5,9 @@ from PySide6.QtWidgets import QMainWindow,QWidget,QHBoxLayout,QVBoxLayout,QLabel
 from ui.pages.dashboard_page import DashboardPage
 from ui.pages.import_page import ImportPage
 from ui.pages.converter_page import ConverterPage
+from ui.pages.survey_page import SurveyPage
 from ui.pages.cad_page import CadPage
 from ui.pages.batch_page import BatchPage
-from ui.pages.survey_page import SurveyPage
 from ui.pages.map_page import MapPage
 from ui.pages.history_page import HistoryPage
 from ui.pages.settings_page import SettingsPage
@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
         self.workspace_banner=QLabel("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard"); self.workspace_banner.setStyleSheet("background:#1F3864;color:white;padding:8px 14px;font-weight:bold;"); right_layout.addWidget(self.workspace_banner)
         self.stack=QStackedWidget(); self.pages={"dashboard":DashboardPage(),"import":ImportPage(),"converter":ConverterPage(),"survey":SurveyPage(),"cad":CadPage(),"batch":BatchPage(),"map":MapPage(),"history":HistoryPage(),"settings":SettingsPage(),"about":AboutPage()}
         for key,_ in SIDEBAR_ITEMS:self.stack.addWidget(self.pages[key])
-        self.pages["dashboard"].file_selected.connect(self._set_active_file); self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder); self.pages["batch"].batch_completed.connect(self._on_batch_completed)
+        self.pages["dashboard"].file_selected.connect(self._set_active_file); self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder); self.pages["batch"].batch_completed.connect(self._on_batch_completed); self.pages["history"].file_reloaded.connect(self._reload_history_file)
         right_layout.addWidget(self.stack); layout.addWidget(self.sidebar); layout.addWidget(right); self.sidebar.setCurrentRow(0); self.statusBar().showMessage(tr("Ready"))
 
     def _set_workspace_folder(self,folder:str):
@@ -44,6 +44,11 @@ class MainWindow(QMainWindow):
             loader=getattr(self.pages[key],"load_active_file",None)
             if callable(loader):loader(path)
         self.statusBar().showMessage(f"Active File: {path}")
+
+    def _reload_history_file(self,path:str):
+        self._set_active_file(path)
+        self.sidebar.setCurrentRow(2)
+        self.statusBar().showMessage(f"History file loaded: {path} — ready for further editing/conversion")
 
     def _on_batch_completed(self,output_paths:list,target_crs:str,source_crs:str):
         if output_paths:
