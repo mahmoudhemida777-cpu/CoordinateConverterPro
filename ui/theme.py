@@ -31,19 +31,13 @@ def _colors_for(app: QApplication, theme: str) -> dict[str,str]:
     return DARK
 
 def _normalize_legacy_page_styles(app: QApplication) -> None:
-    """Remove old local light styles that override the application theme."""
     for widget in app.allWidgets():
         local=widget.styleSheet() or ""
         if not local: continue
         light_markers=("background:white","background: white","background-color:white","background-color: white","color:#1F3864","color: #1F3864","color:#555","color: #555","color:#333","color: #333","color:#777","color: #777","#C9D2DE","#D8C58A")
-        if any(marker in local for marker in light_markers):
-            if widget.__class__.__name__ == "QPushButton" and "#C9A227" in local:
-                widget.setStyleSheet("")
-            else:
-                widget.setStyleSheet("")
+        if any(marker in local for marker in light_markers): widget.setStyleSheet("")
 
 def apply_theme(app: QApplication, theme: str | None = None) -> None:
-    """Apply the selected application-wide theme."""
     selected=(theme or current_theme()).lower()
     if selected not in {"dark","light","auto"}: selected="dark"
     c=_colors_for(app,selected)
@@ -62,35 +56,39 @@ def apply_theme(app: QApplication, theme: str | None = None) -> None:
     app.setStyleSheet(f"""
     * {{ font-family:'Segoe UI','Arial'; font-size:10pt; }}
     QMainWindow,QWidget {{ background:{c['BG']}; color:{c['TEXT']}; }}
-    QFrame,QGroupBox {{ border:1px solid {c['BORDER']}; border-radius:8px; background:{c['SURFACE']}; }}
-    QGroupBox {{ margin-top:12px; padding:16px 10px 10px 10px; font-weight:700; color:{c['TEXT']}; }}
-    QGroupBox::title {{ subcontrol-origin:margin; left:12px; padding:0 6px; color:{c['TEXT']}; background:{c['SURFACE']}; }}
+    QFrame {{ background:transparent; border:0; }}
+    QGroupBox {{ margin-top:16px; padding:22px 12px 12px 12px; border:1px solid {c['BORDER']}; border-radius:9px; background:{c['SURFACE']}; font-weight:700; color:{c['TEXT']}; }}
+    QGroupBox::title {{ subcontrol-origin:margin; left:12px; top:3px; padding:2px 8px; color:{c['TEXT']}; background:{c['SURFACE']}; }}
+    QGroupBox:checked {{ border:1px solid {c['BLUE']}; }}
+    QGroupBox:unchecked {{ border:1px solid {c['BORDER']}; color:{c['MUTED']}; }}
+    QGroupBox::indicator {{ width:15px; height:15px; margin-right:4px; }}
+    QGroupBox::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:4px; }}
+    QGroupBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:4px; }}
     QLabel {{ color:{c['TEXT']}; background:transparent; }}
-    QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox {{ background:{c['BASE']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:6px; padding:7px 9px; min-height:20px; }}
-    QLineEdit:focus,QComboBox:focus,QSpinBox:focus,QDoubleSpinBox:focus {{ border:1px solid {c['BLUE']}; }}
-    QComboBox::drop-down {{ border:0; width:26px; }}
-    QComboBox QAbstractItemView {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; selection-background-color:{c['BLUE']}; selection-color:#FFFFFF; }}
-    QPushButton {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:6px; padding:8px 14px; font-weight:600; min-height:18px; }}
+    #pageTitle {{ font-size:18pt; font-weight:800; color:{c['TEXT']}; }}
+    #pageSubtitle {{ color:{c['MUTED']}; font-size:9.5pt; }}
+    QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox {{ background:{c['BASE']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:6px; padding:6px 9px; min-height:20px; }}
+    QLineEdit:focus,QComboBox:focus,QSpinBox:focus,QDoubleSpinBox:focus {{ border:2px solid {c['BLUE']}; }}
+    QComboBox::drop-down {{ border:0; width:28px; }}
+    QComboBox QAbstractItemView {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; selection-background-color:{c['BLUE']}; selection-color:#FFFFFF; padding:3px; }}
+    QPushButton {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:7px; padding:7px 12px; font-weight:600; min-height:22px; min-width:82px; }}
     QPushButton:hover {{ background:{c['BLUE_HOVER']}; border-color:{c['BLUE_HOVER']}; color:#FFFFFF; }}
     QPushButton:pressed {{ background:{c['BLUE']}; color:#FFFFFF; }}
-    QCheckBox,QRadioButton {{ color:{c['TEXT']}; spacing:8px; font-weight:500; }}
+    QPushButton:checked {{ background:{c['BLUE']}; color:#FFFFFF; border:2px solid {c['BLUE_HOVER']}; }}
+    QPushButton:disabled {{ color:{c['MUTED']}; background:{c['SURFACE']}; border-color:{c['BORDER']}; }}
+    QCheckBox,QRadioButton {{ color:{c['TEXT']}; spacing:7px; font-weight:500; min-height:24px; }}
     QCheckBox:checked,QRadioButton:checked {{ color:{c['TEXT']}; font-weight:700; }}
     QCheckBox::indicator,QRadioButton::indicator {{ width:17px; height:17px; }}
     QCheckBox::indicator:unchecked,QRadioButton::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:4px; }}
     QCheckBox::indicator:hover,QRadioButton::indicator:hover {{ border:2px solid {c['BLUE_HOVER']}; }}
     QCheckBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:4px; }}
     QRadioButton::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:9px; }}
-    QGroupBox:checked {{ border:1px solid {c['BLUE']}; }}
-    QGroupBox:unchecked {{ border:1px solid {c['BORDER']}; color:{c['MUTED']}; }}
-    QGroupBox::indicator {{ width:16px; height:16px; }}
-    QGroupBox::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:8px; }}
-    QGroupBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:8px; }}
-    #cadPage QComboBox:hover,#cadPage QLineEdit:hover {{ border:1px solid {c['BLUE_HOVER']}; }}
-    #cadPage QPushButton:focus {{ border:2px solid {c['BLUE_HOVER']}; }}
     QProgressBar {{ background:{c['BASE']}; border:1px solid {c['BORDER']}; border-radius:5px; text-align:center; color:{c['TEXT']}; min-height:12px; }}
     QProgressBar::chunk {{ background:{c['BLUE']}; border-radius:4px; }}
     QTableWidget,QTreeWidget,QListWidget {{ background:{c['BASE']}; alternate-background-color:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; gridline-color:{c['BORDER']}; selection-background-color:{c['BLUE']}; selection-color:#FFFFFF; }}
-    QHeaderView::section {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:0; border-right:1px solid {c['BORDER']}; border-bottom:1px solid {c['BORDER']}; padding:8px; font-weight:700; }}
+    QHeaderView::section {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:0; border-right:1px solid {c['BORDER']}; border-bottom:1px solid {c['BORDER']}; padding:7px; font-weight:700; }}
+    QSplitter::handle {{ background:{c['BORDER']}; }}
+    QSplitter::handle:horizontal {{ width:4px; margin:3px 0; border-radius:2px; }}
     QScrollBar:vertical {{ background:{c['BG']}; width:10px; margin:0; }}
     QScrollBar::handle:vertical {{ background:#304A64; border-radius:5px; min-height:30px; }}
     QScrollBar::handle:vertical:hover {{ background:{c['BLUE']}; }}
@@ -98,11 +96,14 @@ def apply_theme(app: QApplication, theme: str | None = None) -> None:
     QScrollBar::handle:horizontal {{ background:#304A64; border-radius:5px; min-width:30px; }}
     QStatusBar {{ background:{'#08111B' if selected!='light' else '#E6EDF5'}; color:{c['MUTED']}; border-top:1px solid {c['BORDER']}; }}
     #sidebar {{ background:{'#09131F' if selected!='light' else '#E7EEF6'}; border:0; border-right:1px solid {c['BORDER']}; padding:8px; outline:0; }}
-    #sidebar::item {{ color:{c['MUTED']}; padding:12px 14px; margin:2px 0; border-radius:6px; }}
+    #sidebar::item {{ color:{c['MUTED']}; padding:10px 10px; margin:2px 0; border-radius:7px; min-height:26px; }}
     #sidebar::item:hover {{ background:{'#14283D' if selected!='light' else '#D8E6F5'}; color:{c['TEXT']}; }}
-    #sidebar::item:selected {{ background:{c['BLUE']}; color:#FFFFFF; font-weight:700; }}
-    #workspaceBanner {{ background:{'#10243A' if selected!='light' else '#E1EBF5'}; color:{c['TEXT']}; padding:8px 14px; border-bottom:1px solid {c['BORDER']}; }}
+    #sidebar::item:selected {{ background:{c['BLUE']}; color:#FFFFFF; font-weight:700; border-left:3px solid {c['GOLD']}; padding-left:7px; }}
+    #sidebar::item:selected:hover {{ background:{c['BLUE_HOVER']}; }}
+    #workspaceBanner {{ background:{'#10243A' if selected!='light' else '#E1EBF5'}; color:{c['TEXT']}; padding:7px 14px; border-bottom:1px solid {c['BORDER']}; }}
     QMessageBox {{ background:{c['SURFACE']}; color:{c['TEXT']}; }}
+    #cadPage QComboBox:hover,#cadPage QLineEdit:hover {{ border:1px solid {c['BLUE_HOVER']}; }}
+    #cadPage QPushButton:focus {{ border:2px solid {c['BLUE_HOVER']}; }}
     """)
     QTimer.singleShot(0,lambda:_normalize_legacy_page_styles(app))
     QTimer.singleShot(500,lambda:_normalize_legacy_page_styles(app))
