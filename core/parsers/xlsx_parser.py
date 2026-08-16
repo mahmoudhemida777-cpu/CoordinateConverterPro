@@ -13,7 +13,6 @@ class ColumnMapping:
     z_col: Optional[str] = None
 
 def _norm(s: object)->str:return "".join(ch for ch in str(s).strip().lower() if ch.isalnum())
-
 def _find_col(headers:list[str], aliases:tuple[str,...], fallback:int|None=None)->int|None:
     ns=[_norm(h) for h in headers]; al=[_norm(a) for a in aliases]
     for a in al:
@@ -21,12 +20,10 @@ def _find_col(headers:list[str], aliases:tuple[str,...], fallback:int|None=None)
     for i,h in enumerate(ns):
         if any(a in h for a in al):return i
     return fallback
-
 def sniff_columns(path: str, sheet: Optional[str] = None) -> List[str]:
     wb=openpyxl.load_workbook(path,read_only=True,data_only=True); ws=wb[sheet] if sheet else wb.active
     header=[str(c.value).strip() if c.value is not None else "" for c in next(ws.iter_rows(min_row=1,max_row=1))]; wb.close()
     return header or ["Column 1","Column 2","Column 3"]
-
 def parse_xlsx(path: str, mapping: ColumnMapping, sheet: Optional[str] = None) -> List[PointResult]:
     wb=openpyxl.load_workbook(path,read_only=True,data_only=True); ws=wb[sheet] if sheet else wb.active
     rows=list(ws.iter_rows(values_only=True)); wb.close()
@@ -45,16 +42,12 @@ def parse_xlsx(path: str, mapping: ColumnMapping, sheet: Optional[str] = None) -
             except (ValueError,TypeError):z=None
         points.append(PointResult(name or f"PT-{i}",x,y,z))
     return points
-
 def parse_xlsx_auto(path: str, sheet: Optional[str] = None) -> List[PointResult]:
     wb=openpyxl.load_workbook(path,read_only=True,data_only=True); ws=wb[sheet] if sheet else wb.active
     rows=list(ws.iter_rows(values_only=True)); wb.close()
     if not rows:return []
     headers=[str(h).strip() if h is not None else "" for h in rows[0]]; data=rows[1:]
-    xidx=_find_col(headers,("easting","east","x","xcoord","xcoordinate","longitude","lon"),None)
-    yidx=_find_col(headers,("northing","north","y","ycoord","ycoordinate","latitude","lat"),None)
-    zidx=_find_col(headers,("elevation","elev","height","z","zcoord","zcoordinate"),None)
-    nidx=_find_col(headers,("pointnumber","pointno","pointid","point","name","id","number"),None)
+    xidx=_find_col(headers,("easting","east","x","xcoord","xcoordinate","longitude","lon"),None); yidx=_find_col(headers,("northing","north","y","ycoord","ycoordinate","latitude","lat"),None); zidx=_find_col(headers,("elevation","elev","height","z","zcoord","zcoordinate"),None); nidx=_find_col(headers,("pointnumber","pointno","pointid","pointcode","code","point","name","id","number"),None)
     if xidx is None or yidx is None:
         width=max((len(r) for r in data),default=0); numeric=[]
         for c in range(width):
@@ -72,7 +65,6 @@ def parse_xlsx_auto(path: str, sheet: Optional[str] = None) -> List[PointResult]
         name=str(row[nidx]).strip() if nidx is not None and len(row)>nidx and row[nidx] is not None and str(row[nidx]).strip() else f"PT-{i}"
         points.append(PointResult(name,x,y,z))
     return points
-
 def _is_number(v):
     try:float(v);return True
     except (ValueError,TypeError):return False
