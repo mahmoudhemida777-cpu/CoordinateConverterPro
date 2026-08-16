@@ -67,10 +67,15 @@ def apply_theme(app: QApplication, theme: str | None = None) -> None:
     QLabel {{ color:{c['TEXT']}; background:transparent; }}
     #pageTitle {{ font-size:18pt; font-weight:800; color:{c['TEXT']}; }}
     #pageSubtitle {{ color:{c['MUTED']}; font-size:9.5pt; }}
-    QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox {{ background:{c['BASE']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:6px; padding:6px 9px; min-height:20px; }}
+    QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox {{ background:{c['BASE']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:6px; padding:6px 9px; min-height:20px; selection-background-color:{c['BLUE']}; selection-color:#FFFFFF; }}
     QLineEdit:focus,QComboBox:focus,QSpinBox:focus,QDoubleSpinBox:focus {{ border:2px solid {c['BLUE']}; }}
-    QComboBox::drop-down {{ border:0; width:28px; }}
+    QComboBox:hover {{ border:1px solid {c['BLUE_HOVER']}; }}
+    QComboBox:focus {{ background:{c['SURFACE_2']}; color:#FFFFFF; }}
     QComboBox QAbstractItemView {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; selection-background-color:{c['BLUE']}; selection-color:#FFFFFF; padding:3px; }}
+    QComboBox QAbstractItemView::item {{ color:{c['TEXT']}; background:{c['SURFACE_2']}; padding:6px 8px; min-height:24px; }}
+    QComboBox QAbstractItemView::item:hover {{ color:#FFFFFF; background:{c['BLUE_HOVER']}; }}
+    QComboBox QAbstractItemView::item:selected {{ color:#FFFFFF; background:{c['BLUE']}; font-weight:700; }}
+    QComboBox::drop-down {{ border:0; width:28px; }}
     QPushButton {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:7px; padding:7px 12px; font-weight:600; min-height:22px; min-width:82px; }}
     QPushButton:hover {{ background:{c['BLUE_HOVER']}; border-color:{c['BLUE_HOVER']}; color:#FFFFFF; }}
     QPushButton:pressed {{ background:{c['BLUE']}; color:#FFFFFF; }}
