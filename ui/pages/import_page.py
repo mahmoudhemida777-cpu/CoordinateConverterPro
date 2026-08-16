@@ -10,6 +10,9 @@ from ui.widgets.workspace_bar import WorkspaceFileBar
 
 
 class ColumnMappingDialog(QDialog):
+    # Compatibility alias for older pages that used dlg.Accepted.
+    Accepted = QDialog.DialogCode.Accepted
+
     def __init__(self, columns: list[str], parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Column Mapping")
