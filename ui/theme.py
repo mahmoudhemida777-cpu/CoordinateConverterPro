@@ -73,11 +73,20 @@ def apply_theme(app: QApplication, theme: str | None = None) -> None:
     QPushButton {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; border-radius:6px; padding:8px 14px; font-weight:600; min-height:18px; }}
     QPushButton:hover {{ background:{c['BLUE_HOVER']}; border-color:{c['BLUE_HOVER']}; color:#FFFFFF; }}
     QPushButton:pressed {{ background:{c['BLUE']}; color:#FFFFFF; }}
-    QCheckBox,QRadioButton {{ color:{c['TEXT']}; spacing:8px; }}
-    QCheckBox::indicator,QRadioButton::indicator {{ width:16px; height:16px; }}
-    QCheckBox::indicator:unchecked,QRadioButton::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:3px; }}
-    QCheckBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:3px; }}
-    QRadioButton::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:8px; }}
+    QCheckBox,QRadioButton {{ color:{c['TEXT']}; spacing:8px; font-weight:500; }}
+    QCheckBox:checked,QRadioButton:checked {{ color:{c['TEXT']}; font-weight:700; }}
+    QCheckBox::indicator,QRadioButton::indicator {{ width:17px; height:17px; }}
+    QCheckBox::indicator:unchecked,QRadioButton::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:4px; }}
+    QCheckBox::indicator:hover,QRadioButton::indicator:hover {{ border:2px solid {c['BLUE_HOVER']}; }}
+    QCheckBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:4px; }}
+    QRadioButton::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:9px; }}
+    QGroupBox:checked {{ border:1px solid {c['BLUE']}; }}
+    QGroupBox:unchecked {{ border:1px solid {c['BORDER']}; color:{c['MUTED']}; }}
+    QGroupBox::indicator {{ width:16px; height:16px; }}
+    QGroupBox::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:8px; }}
+    QGroupBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:8px; }}
+    #cadPage QComboBox:hover,#cadPage QLineEdit:hover {{ border:1px solid {c['BLUE_HOVER']}; }}
+    #cadPage QPushButton:focus {{ border:2px solid {c['BLUE_HOVER']}; }}
     QProgressBar {{ background:{c['BASE']}; border:1px solid {c['BORDER']}; border-radius:5px; text-align:center; color:{c['TEXT']}; min-height:12px; }}
     QProgressBar::chunk {{ background:{c['BLUE']}; border-radius:4px; }}
     QTableWidget,QTreeWidget,QListWidget {{ background:{c['BASE']}; alternate-background-color:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; gridline-color:{c['BORDER']}; selection-background-color:{c['BLUE']}; selection-color:#FFFFFF; }}

@@ -19,11 +19,32 @@ from ui.widgets.crs_picker import CRSPicker
 from ui.widgets.workspace_bar import WorkspaceFileBar
 from ui.pages.settings_page import current_precision
 
+
+
+def _make_collapsible(box: QGroupBox, title: str) -> None:
+    """Make CAD option sections clickable, visible and easy to scan."""
+    box.setCheckable(True)
+    box.setChecked(True)
+
+    def toggle(checked: bool) -> None:
+        box.setTitle(("▼ " if checked else "▶ ") + title)
+        layout = box.layout()
+        if layout is None:
+            return
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            widget = item.widget()
+            if widget is not None:
+                widget.setVisible(checked)
+
+    box.toggled.connect(toggle)
+    toggle(True)
+
 COORDINATE_FILTER="Coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ/KML (*.kmz *.kml);;CSV (*.csv);;Excel (*.xlsx);;Survey TXT (*.txt);;All files (*.*)"
 
 class CadPage(QWidget):
     def __init__(self)->None:
-        super().__init__(); self.engine=CRSEngine(); self.source_points=[]; self.result_points=[]; self.current_file=None; self.workspace_folder=None; self._detected_columns=[]; self._axis_swapped=False
+        super().__init__(); self.setObjectName("cadPage"); self.engine=CRSEngine(); self.source_points=[]; self.result_points=[]; self.current_file=None; self.workspace_folder=None; self._detected_columns=[]; self._axis_swapped=False
         root=QVBoxLayout(self); root.setContentsMargins(20,16,20,20); root.setSpacing(10)
         title_row=QHBoxLayout(); title=QLabel("CAD / Civil 3D Converter"); title.setObjectName("pageTitle"); title_row.addWidget(title); title_row.addStretch(); self.reset_btn=QPushButton("Reset"); self.reset_btn.clicked.connect(self._reset_page); title_row.addWidget(self.reset_btn); root.addLayout(title_row)
         sub=QLabel("Convert survey points to CAD (DXF) or Civil 3D (CSV) — Smart Parsing, Axis Control and independent Grid/Zigzag ordering."); sub.setWordWrap(True); sub.setObjectName("pageSubtitle"); root.addWidget(sub)
@@ -44,9 +65,15 @@ class CadPage(QWidget):
         pg.addWidget(QLabel("Easting / X"),1,0); pg.addWidget(self.x_column,1,1); pg.addWidget(QLabel("Northing / Y"),1,2); pg.addWidget(self.y_column,1,3)
         pg.addWidget(QLabel("Elevation / Z"),2,0); pg.addWidget(self.z_column,2,1); pg.addWidget(QLabel("Point Code / Name"),2,2); pg.addWidget(self.name_column,2,3)
         for col in (1,3): pg.setColumnStretch(col,1)
+        _make_collapsible(parsing, "1  FILE & PARSING OPTIONS")
+        parsing.setMinimumHeight(112)
         ll.addWidget(parsing)
 
-        axis=QGroupBox("2  AXIS ORDER — IMPORTANT"); af=QHBoxLayout(axis); self.axis_xy=QRadioButton("Easting (X) → Northing (Y)  |  Standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X)  |  SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); ll.addWidget(axis)
+        axis=QGroupBox("2  AXIS ORDER — IMPORTANT"); af=QHBoxLayout(axis); self.axis_xy=QRadioButton("Easting (X) → Northing (Y)  |  Standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X)  |  SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); self.axis_xy.toggled.connect(lambda _: self._refresh_preview())
+        self.axis_yx.toggled.connect(lambda _: self._refresh_preview())
+        self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview())
+        self.group_by_name.toggled.connect(lambda _: self._refresh_preview())
+ll.addWidget(axis)
 
         ordering=QGroupBox("3  GRID / ZIGZAG POINT NUMBERING"); og=QGridLayout(ordering); og.setVerticalSpacing(7)
         self.ordering_mode=QComboBox(); self.ordering_mode.addItem("Grid Zigzag — Start West (W → E)","GRID_ZIGZAG_WEST"); self.ordering_mode.addItem("Grid Zigzag — Start East (E → W)","GRID_ZIGZAG_EAST"); self.ordering_mode.addItem("Keep Source Order","SOURCE")
@@ -54,11 +81,13 @@ class CadPage(QWidget):
         self.group_by_name=QCheckBox("Group by Point Code / Name — each code is ordered independently"); self.group_by_name.setChecked(True); og.addWidget(self.group_by_name,1,0,1,3)
         self.auto_grid=QCheckBox("Auto-detect grid rows"); self.auto_grid.setChecked(True); og.addWidget(self.auto_grid,2,0); self.tolerance_combo=QComboBox(); self.tolerance_combo.addItems(["Auto","0.01","0.05","0.10","0.25","0.50","1.00"]); og.addWidget(QLabel("Row tolerance (m)"),2,1); og.addWidget(self.tolerance_combo,2,2)
         self.renumber_preview=QPushButton("Apply & Preview Zigzag"); self.renumber_preview.clicked.connect(self._refresh_preview); og.addWidget(self.renumber_preview,3,0,1,3)
+        _make_collapsible(ordering, "3  GRID / ZIGZAG POINT NUMBERING")
+        ordering.setMinimumHeight(160)
         ll.addWidget(ordering)
 
-        advanced=QGroupBox("4  ADVANCED OPTIONS"); ag=QHBoxLayout(advanced); self.auto_crs=QCheckBox("Auto Detect CRS"); self.auto_crs.setChecked(True); self.write_code=QCheckBox("Write Point Code to DXF"); self.write_code.setChecked(True); ag.addWidget(self.auto_crs); ag.addWidget(self.write_code); ag.addStretch(); ll.addWidget(advanced)
+        advanced=QGroupBox("4  ADVANCED OPTIONS"); ag=QHBoxLayout(advanced); self.auto_crs=QCheckBox("Auto Detect CRS"); self.auto_crs.setChecked(True); self.write_code=QCheckBox("Write Point Code to DXF"); self.write_code.setChecked(True); ag.addWidget(self.auto_crs); ag.addWidget(self.write_code); ag.addStretch(); _make_collapsible(advanced, "4  ADVANCED OPTIONS"); advanced.setMinimumHeight(68); ll.addWidget(advanced)
 
-        crs=QGroupBox("COORDINATE REFERENCE SYSTEM"); cg=QHBoxLayout(crs); self.source_picker=CRSPicker(self.engine,"SOURCE CRS"); self.target_picker=CRSPicker(self.engine,"TARGET CRS"); cg.addWidget(self.source_picker,1); cg.addWidget(self.target_picker,1); ll.addWidget(crs)
+        crs=QGroupBox("COORDINATE REFERENCE SYSTEM"); cg=QHBoxLayout(crs); self.source_picker=CRSPicker(self.engine,"SOURCE CRS"); self.target_picker=CRSPicker(self.engine,"TARGET CRS"); cg.addWidget(self.source_picker,1); cg.addWidget(self.target_picker,1); crs.setMinimumHeight(92); ll.addWidget(crs)
         self.convert_btn=QPushButton("CONVERT & PREPARE FOR CAD / CIVIL 3D"); self.convert_btn.clicked.connect(self._convert); ll.addWidget(self.convert_btn)
         self.progress=QProgressBar(); self.progress.setRange(0,100); ll.addWidget(self.progress)
         summary=QHBoxLayout(); self.total=QLabel("Total: 0"); self.success=QLabel("Success: 0"); self.failed=QLabel("Failed: 0"); summary.addWidget(self.total); summary.addWidget(self.success); summary.addWidget(self.failed); summary.addStretch(); ll.addLayout(summary)
