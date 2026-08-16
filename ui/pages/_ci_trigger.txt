@@ -1,1 +1,1 @@
-CI verification trigger after Dashboard/pages/CSV/TXT integration review.
+CI verification trigger for final UI polish, CAD interaction, selection visibility, and all-page theme consistency.
