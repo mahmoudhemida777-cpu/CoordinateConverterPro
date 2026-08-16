@@ -1,8 +1,8 @@
 """MH GeoSuite Pro professional theme system."""
 from __future__ import annotations
 from PySide6.QtGui import QPalette, QColor
-from PySide6.QtWidgets import QApplication, QGroupBox, QLabel
-from PySide6.QtCore import QTimer, QSettings
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QSplitter
+from PySide6.QtCore import QTimer, QSettings, QObject, QEvent, Qt
 
 DARK = {
     "BG":"#0B1420","SURFACE":"#111E2D","SURFACE_2":"#16263A","BORDER":"#2A4058",
@@ -36,6 +36,41 @@ def _normalize_legacy_page_styles(app: QApplication) -> None:
         if not local: continue
         light_markers=("background:white","background: white","background-color:white","background-color: white","color:#1F3864","color: #1F3864","color:#555","color: #555","color:#333","color: #333","color:#777","color: #777","#C9D2DE","#D8C58A")
         if any(marker in local for marker in light_markers): widget.setStyleSheet("")
+
+class _CadResponsiveFilter(QObject):
+    """Switch the CAD splitter to a vertical workbench on narrow windows."""
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Resize:
+            self._apply(watched)
+        return False
+
+    @staticmethod
+    def _apply(page) -> None:
+        splitter = page.findChild(QSplitter)
+        if splitter is None:
+            return
+        narrow = page.width() < 1400
+        wanted = Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
+        if splitter.orientation() != wanted:
+            splitter.setOrientation(wanted)
+            splitter.setSizes([610, 430] if narrow else [540, 760])
+        elif narrow:
+            sizes = splitter.sizes()
+            if len(sizes) == 2 and (sizes[0] < 500 or sizes[1] < 280):
+                splitter.setSizes([610, 430])
+
+def _install_cad_responsive_layout(app: QApplication) -> None:
+    for widget in app.allWidgets():
+        if widget.objectName() != "cadPage":
+            continue
+        if widget.property("mhCadResponsiveInstalled"):
+            _CadResponsiveFilter._apply(widget)
+            continue
+        filt = _CadResponsiveFilter(widget)
+        widget.installEventFilter(filt)
+        widget.setProperty("mhCadResponsiveInstalled", True)
+        widget.setProperty("mhCadResponsiveFilter", filt)
+        _CadResponsiveFilter._apply(widget)
 
 def apply_theme(app: QApplication, theme: str | None = None) -> None:
     selected=(theme or current_theme()).lower()
@@ -99,6 +134,7 @@ def apply_theme(app: QApplication, theme: str | None = None) -> None:
     QHeaderView::section {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:0; border-right:1px solid {c['BORDER']}; border-bottom:1px solid {c['BORDER']}; padding:7px; font-weight:700; }}
     QSplitter::handle {{ background:{c['BORDER']}; }}
     QSplitter::handle:horizontal {{ width:4px; margin:3px 0; border-radius:2px; }}
+    QSplitter::handle:vertical {{ height:4px; margin:0 3px; border-radius:2px; }}
     QScrollBar:vertical {{ background:{c['BG']}; width:10px; margin:0; }}
     QScrollBar::handle:vertical {{ background:#304A64; border-radius:5px; min-height:30px; }}
     QScrollBar::handle:vertical:hover {{ background:{c['BLUE']}; }}
@@ -114,6 +150,15 @@ def apply_theme(app: QApplication, theme: str | None = None) -> None:
     QMessageBox {{ background:{c['SURFACE']}; color:{c['TEXT']}; }}
     #cadPage QComboBox:hover,#cadPage QLineEdit:hover {{ border:1px solid {c['BLUE_HOVER']}; }}
     #cadPage QPushButton:focus {{ border:2px solid {c['BLUE_HOVER']}; }}
+    #cadPage QGroupBox {{ padding:19px 9px 9px 9px; }}
+    #cadPage QGroupBox::title {{ left:9px; padding:2px 6px; }}
+    #cadPage QComboBox,#cadPage QLineEdit {{ min-width:105px; padding:5px 7px; }}
+    #cadPage QLabel {{ font-size:9.5pt; }}
+    #cadPage #previewTitle {{ font-size:10pt; font-weight:800; }}
+    #cadPage #previewLegend {{ font-size:8pt; color:{c['MUTED']}; }}
     """)
     QTimer.singleShot(0,lambda:_normalize_legacy_page_styles(app))
+    QTimer.singleShot(0,lambda:_install_cad_responsive_layout(app))
+    QTimer.singleShot(300,lambda:_install_cad_responsive_layout(app))
+    QTimer.singleShot(700,lambda:_install_cad_responsive_layout(app))
     QTimer.singleShot(500,lambda:_normalize_legacy_page_styles(app))
