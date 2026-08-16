@@ -19,8 +19,8 @@ def _read_rows(path:str,encoding:str="utf-8-sig"):
 def _norm(s):return "".join(c for c in str(s).strip().lower() if c.isalnum())
 def _header_like(row):
     if len(row)<2:return False
-    keys=[_norm(x) for x in row];aliases={"easting","east","x","xcoord","xcoordinate","northing","north","y","ycoord","ycoordinate","longitude","lon","latitude","lat","elevation","elev","height","z","zcoord","zcoordinate","point","pointnumber","pointid","name","id"}
-    return any(k in aliases or any(a in k for a in ("easting","northing","longitude","latitude","elevation","pointnumber")) for k in keys) and not all(_is_number(x) for x in row[:min(3,len(row))])
+    keys=[_norm(x) for x in row];aliases={"easting","east","x","xcoord","xcoordinate","northing","north","y","ycoord","ycoordinate","longitude","lon","latitude","lat","elevation","elev","height","z","zcoord","zcoordinate","point","pointnumber","pointid","pointcode","code","name","id"}
+    return any(k in aliases or any(a in k for a in ("easting","northing","longitude","latitude","elevation","pointnumber","pointcode")) for k in keys) and not all(_is_number(x) for x in row[:min(3,len(row))])
 def sniff_columns(path,encoding="utf-8-sig"):
     rows=_read_rows(path,encoding)
     if not rows:return ["Point","Easting","Northing","Elevation"]
@@ -33,7 +33,6 @@ def _find_col(headers,aliases,fallback=None):
         if any(a in h for a in al):return i
     return fallback
 def parse_csv(path,mapping,encoding="utf-8-sig"):
-    # If the UI inferred the same/invalid X and Y header, bypass mapping and use data-driven inference.
     if not mapping.x_col or not mapping.y_col or mapping.x_col==mapping.y_col:return parse_csv_auto(path,encoding)
     rows=_read_rows(path,encoding)
     if not rows:return []
@@ -65,7 +64,7 @@ def parse_csv_auto(path,encoding="utf-8-sig"):
     if not rows:return []
     headers=rows[0];has_header=_header_like(headers);data=rows[1:] if has_header else rows
     if not data:return []
-    xidx=_find_col(headers,("easting","east","x","x_coord","xcoordinate","longitude","lon"),0 if not has_header else None);yidx=_find_col(headers,("northing","north","y","y_coord","ycoordinate","latitude","lat"),1 if not has_header else None);zidx=_find_col(headers,("elevation","elev","height","z","z_coord","zcoordinate"),2 if not has_header else None);nidx=_find_col(headers,("pointnumber","point_no","pointid","point","name","id","number"))
+    xidx=_find_col(headers,("easting","east","x","x_coord","xcoordinate","longitude","lon"),0 if not has_header else None);yidx=_find_col(headers,("northing","north","y","y_coord","ycoordinate","latitude","lat"),1 if not has_header else None);zidx=_find_col(headers,("elevation","elev","height","z","z_coord","zcoordinate"),2 if not has_header else None);nidx=_find_col(headers,("pointnumber","point_no","pointid","pointcode","code","point","name","id","number"))
     if not has_header and len(data[0])>=4 and not _is_number(data[0][0]) and _is_number(data[0][1]) and _is_number(data[0][2]):nidx,xidx,yidx,zidx=0,1,2,3
     if has_header and (xidx is None or yidx is None or xidx==yidx):
         width=max(len(r) for r in data);numeric=[]
