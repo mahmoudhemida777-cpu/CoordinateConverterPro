@@ -1,0 +1,65 @@
+name: Apply Final UI Polish
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    if: ${{ !contains(github.event.head_commit.message, 'Apply final UI polish') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply CAD interaction and global theme polish
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          cad = Path('ui/pages/cad_page.py')
+          s = cad.read_text(encoding='utf-8')
+
+          marker = 'COORDINATE_FILTER='
+          helper = '''\n\ndef _make_collapsible(box: QGroupBox, title: str) -> None:\n    """Make CAD option sections clickable, visible and easy to scan."""\n    box.setCheckable(True)\n    box.setChecked(True)\n\n    def toggle(checked: bool) -> None:\n        box.setTitle(("▼ " if checked else "▶ ") + title)\n        layout = box.layout()\n        if layout is None:\n            return\n        for i in range(layout.count()):\n            item = layout.itemAt(i)\n            widget = item.widget()\n            if widget is not None:\n                widget.setVisible(checked)\n\n    box.toggled.connect(toggle)\n    toggle(True)\n'''
+          if helper.strip() not in s:
+              s = s.replace(marker, helper + '\n' + marker, 1)
+
+          replacements = [
+              ('ll.addWidget(parsing)\n\n        axis=', '_make_collapsible(parsing, "1  FILE & PARSING OPTIONS")\n        parsing.setMinimumHeight(112)\n        ll.addWidget(parsing)\n\n        axis='),
+              ('af.addWidget(self.axis_yx); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); ll.addWidget(axis)', 'af.addWidget(self.axis_yx); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); _make_collapsible(axis, "2  AXIS ORDER — IMPORTANT"); axis.setMinimumHeight(82); ll.addWidget(axis)'),
+              ('ll.addWidget(ordering)\n\n        advanced=', '_make_collapsible(ordering, "3  GRID / ZIGZAG POINT NUMBERING")\n        ordering.setMinimumHeight(160)\n        ll.addWidget(ordering)\n\n        advanced='),
+              ('ag.addWidget(self.auto_crs); ag.addWidget(self.write_code); ag.addStretch(); ll.addWidget(advanced)', 'ag.addWidget(self.auto_crs); ag.addWidget(self.write_code); ag.addStretch(); _make_collapsible(advanced, "4  ADVANCED OPTIONS"); advanced.setMinimumHeight(68); ll.addWidget(advanced)'),
+              ('cg.addWidget(self.source_picker,1); cg.addWidget(self.target_picker,1); ll.addWidget(crs)', 'cg.addWidget(self.source_picker,1); cg.addWidget(self.target_picker,1); crs.setMinimumHeight(92); ll.addWidget(crs)'),
+          ]
+          for a,b in replacements:
+              if a in s:
+                  s=s.replace(a,b,1)
+
+          if 'self.setObjectName("cadPage")' not in s:
+              s=s.replace('super().__init__(); self.engine=', 'super().__init__(); self.setObjectName("cadPage"); self.engine=', 1)
+
+          hook='self.axis_xy.toggled.connect(lambda _: self._refresh_preview())\n        self.axis_yx.toggled.connect(lambda _: self._refresh_preview())\n        self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview())\n        self.group_by_name.toggled.connect(lambda _: self._refresh_preview())\n'
+          if hook not in s:
+              needle='self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); '
+              s=s.replace(needle, needle + hook, 1)
+
+          cad.write_text(s, encoding='utf-8')
+
+          theme = Path('ui/theme.py')
+          t = theme.read_text(encoding='utf-8')
+          old='''    QCheckBox,QRadioButton {{ color:{c['TEXT']}; spacing:8px; }}\n    QCheckBox::indicator,QRadioButton::indicator {{ width:16px; height:16px; }}\n    QCheckBox::indicator:unchecked,QRadioButton::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:3px; }}\n    QCheckBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:3px; }}\n    QRadioButton::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:8px; }}\n'''
+          new='''    QCheckBox,QRadioButton {{ color:{c['TEXT']}; spacing:8px; font-weight:500; }}\n    QCheckBox:checked,QRadioButton:checked {{ color:{c['TEXT']}; font-weight:700; }}\n    QCheckBox::indicator,QRadioButton::indicator {{ width:17px; height:17px; }}\n    QCheckBox::indicator:unchecked,QRadioButton::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:4px; }}\n    QCheckBox::indicator:hover,QRadioButton::indicator:hover {{ border:2px solid {c['BLUE_HOVER']}; }}\n    QCheckBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:4px; }}\n    QRadioButton::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:9px; }}\n    QGroupBox:checked {{ border:1px solid {c['BLUE']}; }}\n    QGroupBox:unchecked {{ border:1px solid {c['BORDER']}; color:{c['MUTED']}; }}\n    QGroupBox::indicator {{ width:16px; height:16px; }}\n    QGroupBox::indicator:unchecked {{ border:2px solid {c['MUTED']}; background:{c['SURFACE_2']}; border-radius:8px; }}\n    QGroupBox::indicator:checked {{ border:2px solid {c['BLUE']}; background:{c['BLUE']}; border-radius:8px; }}\n    #cadPage QComboBox:hover,#cadPage QLineEdit:hover {{ border:1px solid {c['BLUE_HOVER']}; }}\n    #cadPage QPushButton:focus {{ border:2px solid {c['BLUE_HOVER']}; }}\n'''
+          if old in t:
+              t=t.replace(old,new,1)
+          theme.write_text(t, encoding='utf-8')
+          PY
+      - name: Commit changes and remove one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ui/pages/cad_page.py ui/theme.py .github/workflows/apply-final-ui.yml
+          git rm .github/workflows/apply-final-ui.yml
+          git commit -m "Apply final UI polish across all pages"
+          git push
