@@ -1,4 +1,4 @@
-name: Fix CAD indentation
+name: Fix CAD preview layout
 
 on:
   push:
@@ -9,51 +9,90 @@ permissions:
 
 jobs:
   fix:
-    if: ${{ !contains(github.event.head_commit.message, 'Fix CAD indentation') }}
+    if: ${{ !contains(github.event.head_commit.message, 'Remove CAD visual preview panel') && !contains(github.event.head_commit.message, 'Remove one-shot CAD preview workflow') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Repair CAD initialization order
+      - name: Remove preview panel and keep CAD workflow focused
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
+
           p = Path('ui/pages/cad_page.py')
           s = p.read_text(encoding='utf-8')
-          bad = '''        axis=QGroupBox("2  AXIS ORDER — IMPORTANT"); af=QHBoxLayout(axis); self.axis_xy=QRadioButton("Easting (X) → Northing (Y)  |  Standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X)  |  SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); self.axis_xy.toggled.connect(lambda _: self._refresh_preview())
-        self.axis_yx.toggled.connect(lambda _: self._refresh_preview())
-        self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview())
-        self.group_by_name.toggled.connect(lambda _: self._refresh_preview())
-ll.addWidget(axis)
-'''
-          good = '''        axis=QGroupBox("2  AXIS ORDER — IMPORTANT"); af=QHBoxLayout(axis); self.axis_xy=QRadioButton("Easting (X) → Northing (Y)  |  Standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X)  |  SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); _make_collapsible(axis, "2  AXIS ORDER — IMPORTANT"); axis.setMinimumHeight(82); ll.addWidget(axis)
 
-'''
-          if bad not in s:
-              raise SystemExit('Expected malformed CAD block was not found')
-          s = s.replace(bad, good, 1)
-          needle = '''        self.renumber_preview=QPushButton("Apply & Preview Zigzag"); self.renumber_preview.clicked.connect(self._refresh_preview); og.addWidget(self.renumber_preview,3,0,1,3)
-'''
-          insert = needle + '''        self.axis_xy.toggled.connect(lambda _: self._refresh_preview())
-        self.axis_yx.toggled.connect(lambda _: self._refresh_preview())
-        self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview())
-        self.group_by_name.toggled.connect(lambda _: self._refresh_preview())
-'''
-          if needle not in s:
-              raise SystemExit('Ordering initialization anchor not found')
-          s = s.replace(needle, insert, 1)
+          # Remove preview-only Qt imports.
+          s = s.replace('from PySide6.QtGui import QPen, QBrush, QColor, QFont\n', '')
+          s = s.replace('    QSplitter, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,\n', '')
+          s = s.replace('    QGraphicsTextItem, QGraphicsLineItem, QScrollArea, QFrame, QToolButton,\n', '    QScrollArea,\n')
+
+          # Preview state is no longer needed.
+          s = s.replace('        self._preview_expanded = False\n', '')
+
+          # Remove the splitter shell; CAD options become the main work area.
+          s = re.sub(
+              r'        split = QSplitter\(Qt\.Orientation\.Horizontal\)\n'
+              r'        split\.setChildrenCollapsible\(False\)\n'
+              r'        split\.setHandleWidth\(5\)\n'
+              r'        root\.addWidget\(split, 1\)\n',
+              '', s, count=1
+          )
+          s = s.replace('        split.addWidget(left_scroll)\n\n        # -------------------- RIGHT: professional preview --------------------\n', '')
+
+          # Remove the entire visual preview pane and retain only export actions.
+          start = s.find('        # -------------------- RIGHT: professional preview --------------------\n')
+          end = s.find('        table_box = QGroupBox("POINTS PREVIEW TABLE")', start)
+          if start != -1 and end != -1:
+              replacement = '''        root.addWidget(left_scroll, 1)\n\n        export_row = QHBoxLayout()\n        export_row.setSpacing(8)\n        dxf = QPushButton("EXPORT DXF")\n        civil = QPushButton("EXPORT CIVIL 3D CSV")\n        dxf.clicked.connect(self._export_dxf)\n        civil.clicked.connect(self._export_civil3d_csv)\n        export_row.addWidget(dxf, 1)\n        export_row.addWidget(civil, 1)\n        root.addLayout(export_row)\n\n'''
+              s = s[:start] + replacement + s[end:]
+
+          # Remove preview toggle initialization and preview-only methods.
+          s = re.sub(r'        self\._set_preview_collapsed\(\)\n', '', s, count=1)
+          s = re.sub(
+              r'    def _set_preview_collapsed\(self\):\n.*?    def set_workspace_folder\(self, folder: str\):\n',
+              '    def set_workspace_folder(self, folder: str):\n', s, count=1, flags=re.S
+          )
+
+          # Refresh now only calculates the final ordering and updates the table.
+          s = re.sub(
+              r'    def _refresh_preview\(self\):\n.*?    def _populate_table\(self, ordered\):\n',
+              '''    def _refresh_preview(self):\n        if not self.source_points:\n            self.table.setRowCount(0)\n            return\n        pts = self.result_points if self.result_points else self.source_points\n        mode = str(self.ordering_mode.currentData() or "GRID_ZIGZAG_WEST")\n        ordered = order_points(pts, mode=mode, group_by_name=self.group_by_name.isChecked())\n        self._populate_table(ordered)\n\n    def _populate_table(self, ordered):\n''', s, count=1, flags=re.S
+          )
+
+          # Remove obsolete drawing/fit implementation between table population and _populate.
+          s = re.sub(
+              r'    def _draw_preview\(self, ordered\):\n.*?    def _populate\(self\):\n',
+              '    def _populate(self):\n', s, count=1, flags=re.S
+          )
+
+          # Reset no longer references removed graphics widgets.
+          s = s.replace('        self.scene.clear()\n', '')
+          s = s.replace('        self.preview_info.setText("0 points")\n', '')
+
+          # The button is now a numbering action, not a graphics preview action.
+          s = s.replace('"Apply & Preview Zigzag"', '"Apply Zigzag Ordering"')
+
           p.write_text(s, encoding='utf-8')
           PY
-      - name: Verify syntax
+      - name: Verify CAD syntax
         run: python -m py_compile ui/pages/cad_page.py
-      - name: Commit repair
+      - name: Verify preview code is gone
+        run: |
+          ! grep -q 'PREVIEW — POINTS / ZIGZAG PATH' ui/pages/cad_page.py
+          ! grep -q 'QGraphicsView' ui/pages/cad_page.py
+          ! grep -q 'def _draw_preview' ui/pages/cad_page.py
+          grep -q 'EXPORT DXF' ui/pages/cad_page.py
+          grep -q 'EXPORT CIVIL 3D CSV' ui/pages/cad_page.py
+      - name: Commit CAD cleanup
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ui/pages/cad_page.py
-          git commit -m "Fix CAD indentation"
+          git commit -m "Remove CAD visual preview panel"
           git push
-      - name: Remove one-shot repair workflow
+      - name: Remove one-shot workflow
         run: |
           git rm .github/workflows/fix-cad-indentation.yml
-          git commit -m "Remove one-shot CAD repair workflow"
+          git commit -m "Remove one-shot CAD preview workflow"
           git push
