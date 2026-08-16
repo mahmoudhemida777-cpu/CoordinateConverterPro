@@ -4,7 +4,11 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGridLayout, QFrame, QHBoxLayout, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QGridLayout, QFrame, QHBoxLayout,
+    QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView,
+    QAbstractItemView
+)
 from core.batch.batch_processor import find_batch_files
 
 
@@ -17,7 +21,9 @@ class MetricCard(QFrame):
         self.value = QLabel(value); self.value.setStyleSheet("font-size:24px;font-weight:bold;color:#C9A227;")
         b = QLabel(subtitle); b.setStyleSheet("font-size:10px;color:#E8E8E8;")
         lay.addWidget(a); lay.addWidget(self.value); lay.addWidget(b)
-    def set_value(self, value): self.value.setText(value)
+
+    def set_value(self, value):
+        self.value.setText(value)
 
 
 class DashboardPage(QWidget):
@@ -25,48 +31,125 @@ class DashboardPage(QWidget):
     folder_selected = Signal(str)
 
     def __init__(self):
-        super().__init__(); self.folder = None; self.active_file = None
-        root = QVBoxLayout(self); root.setContentsMargins(30,24,30,24); root.setAlignment(Qt.AlignTop)
-        title = QLabel("MH GeoSuite Pro"); title.setStyleSheet("font-size:24px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
+        super().__init__()
+        self.folder = None
+        self.active_file = None
+        root = QVBoxLayout(self)
+        root.setContentsMargins(30, 24, 30, 24)
+        root.setAlignment(Qt.AlignTop)
+
+        title = QLabel("MH GeoSuite Pro")
+        title.setStyleSheet("font-size:24px;font-weight:bold;color:#1F3864;")
+        root.addWidget(title)
         root.addWidget(QLabel("Professional Surveying & Geospatial Engineering Suite"))
+
         actions = QHBoxLayout()
-        scan = QPushButton("Scan Project Folder"); scan.clicked.connect(self._scan_folder); actions.addWidget(scan)
-        refresh = QPushButton("Refresh"); refresh.clicked.connect(self.refresh); actions.addWidget(refresh)
-        use = QPushButton("Use Selected File"); use.clicked.connect(self._use_selected_file); actions.addWidget(use)
-        actions.addStretch(); self.status = QLabel("Ready — select a project folder to inspect it."); actions.addWidget(self.status); root.addLayout(actions)
-        metrics = QGridLayout(); self.files=MetricCard("FILES FOUND","0","Supported coordinate files"); self.formats=MetricCard("FORMATS","0","File types detected"); self.points=MetricCard("ACTIVE FILE","—","Current workspace file"); self.engine=MetricCard("CRS ENGINE","PROJ","Global CRS database")
-        for i,w in enumerate((self.files,self.formats,self.points,self.engine)): metrics.addWidget(w,0,i)
+        scan = QPushButton("Scan Project Folder")
+        scan.clicked.connect(self._scan_folder)
+        actions.addWidget(scan)
+        refresh = QPushButton("Refresh")
+        refresh.clicked.connect(self.refresh)
+        actions.addWidget(refresh)
+        use = QPushButton("Use Selected File")
+        use.clicked.connect(self._use_selected_file)
+        actions.addWidget(use)
+        actions.addStretch()
+        self.status = QLabel("Ready — select a project folder to inspect it.")
+        actions.addWidget(self.status)
+        root.addLayout(actions)
+
+        metrics = QGridLayout()
+        self.files = MetricCard("FILES FOUND", "0", "Supported coordinate files")
+        self.formats = MetricCard("FORMATS", "0", "File types detected")
+        self.points = MetricCard("ACTIVE FILE", "—", "Current workspace file")
+        self.engine = MetricCard("CRS ENGINE", "PROJ", "Global CRS database")
+        for i, w in enumerate((self.files, self.formats, self.points, self.engine)):
+            metrics.addWidget(w, 0, i)
         root.addLayout(metrics)
-        root.addWidget(QLabel("Project Files — double-click or select a row, then Use Selected File"))
-        self.table=QTableWidget(0,5); self.table.setHorizontalHeaderLabels(["File","Format","Size","Modified","Path"]); self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.Stretch)
-        for i in (1,2,3,4): self.table.horizontalHeader().setSectionResizeMode(i,QHeaderView.ResizeToContents)
-        self.table.setMinimumHeight(260); self.table.itemDoubleClicked.connect(lambda *_: self._use_selected_file()); root.addWidget(self.table)
+
+        root.addWidget(QLabel("Project Files — click a row to select it, then Use Selected File"))
+        self.table = QTableWidget(0, 5)
+        self.table.setObjectName("projectFilesTable")
+        self.table.setHorizontalHeaderLabels(["File", "Format", "Size", "Modified", "Path"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        for i in (1, 2, 3, 4):
+            self.table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
+        self.table.setMinimumHeight(260)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setFocusPolicy(Qt.StrongFocus)
+        self.table.setAlternatingRowColors(True)
+        self.table.itemSelectionChanged.connect(self._selection_changed)
+        self.table.itemDoubleClicked.connect(lambda *_: self._use_selected_file())
+        root.addWidget(self.table)
+
+    def _selection_changed(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        path_item = self.table.item(row, 4)
+        name_item = self.table.item(row, 0)
+        if not path_item:
+            return
+        self.active_file = path_item.text()
+        if name_item:
+            self.points.set_value(name_item.text())
+        self.status.setText(f"Selected file: {Path(self.active_file).name}")
 
     def _scan_folder(self):
-        folder=QFileDialog.getExistingDirectory(self,"Select Project Folder")
+        folder = QFileDialog.getExistingDirectory(self, "Select Project Folder")
         if folder:
-            self.folder=folder
+            self.folder = folder
             self.refresh()
             self.folder_selected.emit(folder)
 
     def refresh(self):
-        if not self.folder: return
-        try: files=find_batch_files(self.folder)
-        except Exception as exc: self.status.setText(f"Scan error: {exc}"); return
-        self.table.setRowCount(0); formats=set()
+        if not self.folder:
+            return
+        try:
+            files = find_batch_files(self.folder)
+        except Exception as exc:
+            self.status.setText(f"Scan error: {exc}")
+            return
+        self.table.setRowCount(0)
+        formats = set()
         for p in files:
-            formats.add(p.suffix.lower()); row=self.table.rowCount(); self.table.insertRow(row)
-            vals=[p.name,p.suffix.upper().lstrip('.'),f"{p.stat().st_size/1024:.1f} KB",datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M'),str(p)]
-            for c,v in enumerate(vals): self.table.setItem(row,c,QTableWidgetItem(v))
-        self.files.set_value(str(len(files))); self.formats.set_value(str(len(formats))); self.status.setText(f"Scanned: {len(files)} supported file(s) — workspace shared across pages")
+            formats.add(p.suffix.lower())
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            vals = [
+                p.name,
+                p.suffix.upper().lstrip('.'),
+                f"{p.stat().st_size / 1024:.1f} KB",
+                datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M'),
+                str(p),
+            ]
+            for c, v in enumerate(vals):
+                item = QTableWidgetItem(v)
+                item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                self.table.setItem(row, c, item)
+        self.files.set_value(str(len(files)))
+        self.formats.set_value(str(len(formats)))
+        self.status.setText(f"Scanned: {len(files)} supported file(s) — workspace shared across pages")
+        if files:
+            self.table.setCurrentCell(0, 0)
+            self.table.selectRow(0)
+            self._selection_changed()
 
     def set_workspace_folder(self, folder: str):
         self.folder = folder
         self.refresh()
 
     def _use_selected_file(self):
-        row=self.table.currentRow()
-        if row < 0: return
-        item=self.table.item(row,4)
-        if not item: return
-        path=item.text(); self.active_file=path; self.points.set_value(Path(path).name); self.status.setText(f"Active file: {Path(path).name}"); self.file_selected.emit(path)
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        item = self.table.item(row, 4)
+        if not item:
+            return
+        path = item.text()
+        self.active_file = path
+        self.points.set_value(Path(path).name)
+        self.status.setText(f"Active file: {Path(path).name}")
+        self.file_selected.emit(path)
