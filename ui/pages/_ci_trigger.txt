@@ -1,1 +1,1 @@
-CI verification trigger for final UI polish, CAD interaction, selection visibility, and all-page theme consistency.
+CI verification trigger after CAD syntax repair.
