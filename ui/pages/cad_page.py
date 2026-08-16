@@ -3,13 +3,11 @@ import csv
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPen, QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QFileDialog, QTableWidget, QTableWidgetItem, QProgressBar, QMessageBox,
     QGroupBox, QCheckBox, QComboBox, QRadioButton, QHeaderView, QSizePolicy,
-    QSplitter, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
-    QGraphicsTextItem, QGraphicsLineItem, QScrollArea, QFrame, QToolButton,
+    QScrollArea,
     QAbstractItemView
 )
 from core.crs.engine import CRSEngine
@@ -45,7 +43,6 @@ class CadPage(QWidget):
         self.workspace_folder = None
         self._detected_columns = []
         self._axis_swapped = False
-        self._preview_expanded = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 12, 18, 14)
@@ -90,10 +87,6 @@ class CadPage(QWidget):
         self.direct_mode.stateChanged.connect(self._mode_changed)
         root.addWidget(self.direct_mode)
 
-        split = QSplitter(Qt.Orientation.Horizontal)
-        split.setChildrenCollapsible(False)
-        split.setHandleWidth(5)
-        root.addWidget(split, 1)
 
         # -------------------- LEFT: options --------------------
         left_content = QWidget()
@@ -176,7 +169,7 @@ class CadPage(QWidget):
         self.tolerance_combo.addItems(["Auto", "0.01", "0.05", "0.10", "0.25", "0.50", "1.00"])
         og.addWidget(QLabel("Row tolerance (m)"), 2, 1)
         og.addWidget(self.tolerance_combo, 2, 2)
-        self.renumber_preview = QPushButton("Apply & Preview Zigzag")
+        self.renumber_preview = QPushButton("Apply Zigzag Ordering")
         self.renumber_preview.clicked.connect(self._refresh_preview)
         og.addWidget(self.renumber_preview, 3, 0, 1, 3)
         ll.addWidget(ordering)
@@ -223,69 +216,7 @@ class CadPage(QWidget):
         ll.addStretch(1)
         split.addWidget(left_scroll)
 
-        # -------------------- RIGHT: professional preview --------------------
-        right = QWidget()
-        rl = QVBoxLayout(right)
-        rl.setContentsMargins(8, 2, 2, 2)
-        rl.setSpacing(7)
-
-        preview_shell = QFrame()
-        preview_shell.setObjectName("previewShell")
-        preview_layout = QVBoxLayout(preview_shell)
-        preview_layout.setContentsMargins(10, 8, 10, 10)
-        preview_layout.setSpacing(6)
-
-        header = QHBoxLayout()
-        preview_title = QLabel("PREVIEW — POINTS / ZIGZAG PATH")
-        preview_title.setObjectName("previewTitle")
-        header.addWidget(preview_title)
-        header.addStretch()
-        self.preview_toggle = QToolButton()
-        self.preview_toggle.setCheckable(True)
-        self.preview_toggle.setChecked(False)
-        self.preview_toggle.setArrowType(Qt.ArrowType.DownArrow)
-        self.preview_toggle.setToolTip("Expand / collapse preview")
-        self.preview_toggle.clicked.connect(self._toggle_preview)
-        header.addWidget(self.preview_toggle)
-        preview_layout.addLayout(header)
-
-        self.preview_body = QWidget()
-        body = QVBoxLayout(self.preview_body)
-        body.setContentsMargins(2, 0, 2, 0)
-        body.setSpacing(6)
-        tools = QHBoxLayout()
-        tools.setSpacing(6)
-        fit = QPushButton("Fit")
-        fit.clicked.connect(self._fit_scene)
-        zoom_in = QPushButton("Zoom +")
-        zoom_in.clicked.connect(lambda: self.map_view.scale(1.25, 1.25))
-        zoom_out = QPushButton("Zoom −")
-        zoom_out.clicked.connect(lambda: self.map_view.scale(0.8, 0.8))
-        tools.addWidget(fit)
-        tools.addWidget(zoom_in)
-        tools.addWidget(zoom_out)
-        tools.addStretch()
-        self.preview_info = QLabel("0 points")
-        self.preview_info.setObjectName("previewInfo")
-        tools.addWidget(self.preview_info)
-        body.addLayout(tools)
-
-        self.scene = QGraphicsScene()
-        self.map_view = QGraphicsView(self.scene)
-        self.map_view.setObjectName("cadPreview")
-        self.map_view.setMinimumHeight(185)
-        self.map_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.map_view.setRenderHint(self.map_view.renderHints())
-        body.addWidget(self.map_view, 1)
-
-        legend = QLabel(
-            "POINT = coordinate   |   LABEL = code/name   |   DASHED = zigzag order   |   GROUPS = independent"
-        )
-        legend.setWordWrap(True)
-        legend.setObjectName("previewLegend")
-        body.addWidget(legend)
-        preview_layout.addWidget(self.preview_body, 1)
-        rl.addWidget(preview_shell, 1)
+        root.addWidget(left_scroll, 1)
 
         export_row = QHBoxLayout()
         export_row.setSpacing(8)
@@ -295,12 +226,7 @@ class CadPage(QWidget):
         civil.clicked.connect(self._export_civil3d_csv)
         export_row.addWidget(dxf, 1)
         export_row.addWidget(civil, 1)
-        rl.addLayout(export_row)
-
-        split.addWidget(right)
-        split.setSizes([500, 760])
-        split.setStretchFactor(0, 0)
-        split.setStretchFactor(1, 1)
+        root.addLayout(export_row)
 
         table_box = QGroupBox("POINTS PREVIEW TABLE")
         tl = QVBoxLayout(table_box)
@@ -324,30 +250,6 @@ class CadPage(QWidget):
         self.axis_yx.toggled.connect(lambda _: self._refresh_preview())
         self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview())
         self.group_by_name.toggled.connect(lambda _: self._refresh_preview())
-        self._set_preview_collapsed()
-
-    def _set_preview_collapsed(self):
-        self._preview_expanded = False
-        self.preview_body.setVisible(True)
-        self.preview_body.setMinimumHeight(0)
-        self.preview_body.setMaximumHeight(250)
-        self.preview_toggle.setArrowType(Qt.ArrowType.DownArrow)
-        self.preview_toggle.setToolTip("Expand preview")
-
-    def _set_preview_expanded(self):
-        self._preview_expanded = True
-        self.preview_body.setVisible(True)
-        self.preview_body.setMinimumHeight(460)
-        self.preview_body.setMaximumHeight(760)
-        self.preview_toggle.setArrowType(Qt.ArrowType.UpArrow)
-        self.preview_toggle.setToolTip("Collapse preview")
-
-    def _toggle_preview(self, checked: bool):
-        if checked:
-            self._set_preview_expanded()
-        else:
-            self._set_preview_collapsed()
-        self._fit_scene()
 
     def set_workspace_folder(self, folder: str):
         self.workspace_folder = folder
@@ -528,72 +430,12 @@ class CadPage(QWidget):
 
     def _refresh_preview(self):
         if not self.source_points:
+            self.table.setRowCount(0)
             return
         pts = self.result_points if self.result_points else self.source_points
         mode = str(self.ordering_mode.currentData() or "GRID_ZIGZAG_WEST")
         ordered = order_points(pts, mode=mode, group_by_name=self.group_by_name.isChecked())
-        self._draw_preview(ordered)
         self._populate_table(ordered)
-
-    def _draw_preview(self, ordered):
-        self.scene.clear()
-        valid = []
-        for item in ordered:
-            p = item.point
-            x = p.tgt_x if p.tgt_x is not None else p.src_x
-            y = p.tgt_y if p.tgt_y is not None else p.src_y
-            if x is not None and y is not None:
-                valid.append((item, float(x), float(y)))
-        if not valid:
-            self.preview_info.setText("No valid coordinates")
-            return
-
-        minx, maxx = min(v[1] for v in valid), max(v[1] for v in valid)
-        miny, maxy = min(v[2] for v in valid), max(v[2] for v in valid)
-        dx = max(maxx - minx, 1.0)
-        dy = max(maxy - miny, 1.0)
-        scale = min(700 / dx, 480 / dy)
-        ox = 40 - minx * scale
-        oy = 40 + maxy * scale
-        colors = ["#35D07F", "#FFC107", "#29B6F6", "#AB69FF", "#FF5B6E", "#00BCD4", "#FF8A65"]
-        positions = {item.number: (x * scale + ox, oy - y * scale) for item, x, y in valid}
-        groups = {}
-        for item, _, _ in valid:
-            groups.setdefault(item.group, []).append(item.number)
-        by_number = {item.number: item for item, _, _ in valid}
-
-        for gi, (group, numbers) in enumerate(groups.items()):
-            color = QColor(colors[gi % len(colors)])
-            nums = [n for n in numbers if n in positions]
-            for a, b in zip(nums, nums[1:]):
-                x1, y1 = positions[a]
-                x2, y2 = positions[b]
-                line = QGraphicsLineItem(x1, y1, x2, y2)
-                line.setPen(QPen(color, 1.6, Qt.PenStyle.DashLine))
-                self.scene.addItem(line)
-            for idx, n in enumerate(nums):
-                x, y = positions[n]
-                point = QGraphicsEllipseItem(x - 4, y - 4, 8, 8)
-                point.setBrush(QBrush(color))
-                point.setPen(QPen(QColor("#0B1420"), 1))
-                self.scene.addItem(point)
-                text = QGraphicsTextItem(str(by_number[n].point.name or n))
-                text.setDefaultTextColor(color)
-                text.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-                text.setPos(x + 6, y - 9 + (idx % 2) * 11)
-                self.scene.addItem(text)
-
-        self.scene.setSceneRect(0, 0, 780, 540)
-        self.preview_info.setText(f"{len(valid)} points  |  {len(groups)} code/name groups")
-        self._fit_scene()
-
-    def _fit_scene(self):
-        if not self.scene.items():
-            return
-        self.map_view.fitInView(
-            self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20),
-            Qt.AspectRatioMode.KeepAspectRatio,
-        )
 
     def _populate_table(self, ordered):
         precision = current_precision()
@@ -736,7 +578,5 @@ class CadPage(QWidget):
         self.current_file = None
         self.file_status.setText("No coordinate file loaded")
         self.table.setRowCount(0)
-        self.scene.clear()
-        self.preview_info.setText("0 points")
         self.progress.setValue(0)
         self._populate()
