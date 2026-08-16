@@ -1,6 +1,6 @@
 """Main application window: sidebar + stacked pages."""
 from __future__ import annotations
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import QMainWindow,QWidget,QHBoxLayout,QVBoxLayout,QLabel,QListWidget,QListWidgetItem,QStackedWidget,QStyle,QApplication
 from ui.pages.dashboard_page import DashboardPage
 from ui.pages.import_page import ImportPage
@@ -36,8 +36,7 @@ class MainWindow(QMainWindow):
         if app is not None: apply_theme(app)
         self.setWindowTitle(APP_NAME); self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)); self.resize(1440,900); self.setMinimumSize(1100,700); self.workspace_folder=None
         central=QWidget(); self.setCentralWidget(central); layout=QHBoxLayout(central); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
-        self.sidebar=QListWidget(); self.sidebar.setFixedWidth(238); self.sidebar.setObjectName("sidebar"); self.sidebar.setIconSize(self.sidebar.fontMetrics().height()*1.2*QApplication.primaryScreen().devicePixelRatio()*QApplication.primaryScreen().devicePixelRatio() if QApplication.primaryScreen() else self.sidebar.iconSize()); self.sidebar.setSpacing(1)
-        icon_map={}
+        self.sidebar=QListWidget(); self.sidebar.setFixedWidth(238); self.sidebar.setObjectName("sidebar"); self.sidebar.setIconSize(QSize(18,18)); self.sidebar.setSpacing(1)
         for key,label,pix in SIDEBAR_ITEMS:
             item=QListWidgetItem(self.style().standardIcon(pix),tr(label)); item.setData(Qt.UserRole,key); self.sidebar.addItem(item)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_changed)
