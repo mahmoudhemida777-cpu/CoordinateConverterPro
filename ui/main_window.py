@@ -16,7 +16,18 @@ from ui.i18n import tr
 from ui.theme import apply_theme
 
 APP_NAME="MH GeoSuite Pro"; APP_TAGLINE="Professional Surveying & Geospatial Engineering Suite"
-SIDEBAR_ITEMS=[("dashboard","Dashboard"),("import","Import"),("converter","CRS Converter"),("survey","Survey Tools"),("cad","Civil / CAD"),("batch","Batch Converter"),("map","Map"),("history","History"),("settings","Settings"),("about","About")]
+SIDEBAR_ITEMS=[
+    ("dashboard","Dashboard",QStyle.StandardPixmap.SP_ComputerIcon),
+    ("import","Import",QStyle.StandardPixmap.SP_DialogOpenButton),
+    ("converter","CRS Converter",QStyle.StandardPixmap.SP_BrowserReload),
+    ("survey","Survey Tools",QStyle.StandardPixmap.SP_FileDialogDetailedView),
+    ("cad","Civil / CAD",QStyle.StandardPixmap.SP_DesktopIcon),
+    ("batch","Batch Converter",QStyle.StandardPixmap.SP_DialogApplyButton),
+    ("map","Map",QStyle.StandardPixmap.SP_FileDialogContentsView),
+    ("history","History",QStyle.StandardPixmap.SP_FileDialogListView),
+    ("settings","Settings",QStyle.StandardPixmap.SP_FileDialogDetailedView),
+    ("about","About",QStyle.StandardPixmap.SP_MessageBoxInformation),
+]
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -25,14 +36,15 @@ class MainWindow(QMainWindow):
         if app is not None: apply_theme(app)
         self.setWindowTitle(APP_NAME); self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)); self.resize(1440,900); self.setMinimumSize(1100,700); self.workspace_folder=None
         central=QWidget(); self.setCentralWidget(central); layout=QHBoxLayout(central); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
-        self.sidebar=QListWidget(); self.sidebar.setFixedWidth(210); self.sidebar.setObjectName("sidebar")
-        for key,label in SIDEBAR_ITEMS:
-            item=QListWidgetItem(tr(label)); item.setData(Qt.UserRole,key); self.sidebar.addItem(item)
+        self.sidebar=QListWidget(); self.sidebar.setFixedWidth(238); self.sidebar.setObjectName("sidebar"); self.sidebar.setIconSize(self.sidebar.fontMetrics().height()*1.2*QApplication.primaryScreen().devicePixelRatio()*QApplication.primaryScreen().devicePixelRatio() if QApplication.primaryScreen() else self.sidebar.iconSize()); self.sidebar.setSpacing(1)
+        icon_map={}
+        for key,label,pix in SIDEBAR_ITEMS:
+            item=QListWidgetItem(self.style().standardIcon(pix),tr(label)); item.setData(Qt.UserRole,key); self.sidebar.addItem(item)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_changed)
         right=QWidget(); right_layout=QVBoxLayout(right); right_layout.setContentsMargins(0,0,0,0); right_layout.setSpacing(0)
         self.workspace_banner=QLabel("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard"); self.workspace_banner.setObjectName("workspaceBanner"); right_layout.addWidget(self.workspace_banner)
         self.stack=QStackedWidget(); self.pages={"dashboard":DashboardPage(),"import":ImportPage(),"converter":ConverterPage(),"survey":SurveyPage(),"cad":CadPage(),"batch":BatchPage(),"map":MapPage(),"history":HistoryPage(),"settings":SettingsPage(),"about":AboutPage()}
-        for key,_ in SIDEBAR_ITEMS:self.stack.addWidget(self.pages[key])
+        for key,_,_ in SIDEBAR_ITEMS:self.stack.addWidget(self.pages[key])
         self.pages["dashboard"].file_selected.connect(self._set_active_file); self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder); self.pages["batch"].batch_completed.connect(self._on_batch_completed); self.pages["history"].file_reloaded.connect(self._reload_history_file)
         right_layout.addWidget(self.stack); layout.addWidget(self.sidebar); layout.addWidget(right); self.sidebar.setCurrentRow(0); self.statusBar().showMessage(tr("Ready"))
 
@@ -61,4 +73,4 @@ class MainWindow(QMainWindow):
 
     def _on_sidebar_changed(self,row:int):
         if row < 0 or row >= len(SIDEBAR_ITEMS): return
-        key,_=SIDEBAR_ITEMS[row]; self.stack.setCurrentWidget(self.pages[key])
+        key,_,_=SIDEBAR_ITEMS[row]; self.stack.setCurrentWidget(self.pages[key])
