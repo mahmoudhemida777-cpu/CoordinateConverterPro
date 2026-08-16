@@ -10,7 +10,6 @@ from core.exporters.dxf_exporter import export_dxf,LabelMode
 from ui.i18n import tr
 from ui.widgets.crs_picker import CRSPicker
 from ui.widgets.workspace_bar import WorkspaceFileBar
-from ui.pages.import_page import ColumnMappingDialog
 from ui.pages.settings_page import current_precision
 
 COORDINATE_FILTER="Coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ/KML (*.kmz *.kml);;CSV (*.csv);;Excel (*.xlsx);;Survey TXT (*.txt);;All files (*.*)"
@@ -44,6 +43,26 @@ class CadPage(QWidget):
             self.progress.setMaximum(len(self.result_points)); self.progress.setValue(len(self.result_points)); self._populate()
         elif not direct and self.result_points and all("DIRECT" in (p.message or "") for p in self.result_points):
             self.result_points=[]; self._populate()
+
+    @staticmethod
+    def _auto_xlsx_mapping(columns:list[str])->xlsx_parser.ColumnMapping:
+        """Infer common survey columns without opening a mapping dialog."""
+        normalized={str(c).strip().lower():c for c in columns}
+        def pick(names):
+            for name in names:
+                if name in normalized:return normalized[name]
+            for key,value in normalized.items():
+                if any(name in key for name in names):return value
+            return None
+        x=pick(("easting","east","longitude","lon","x"))
+        y=pick(("northing","north","latitude","lat","y"))
+        z=pick(("elevation","elev","height","z"))
+        name=pick(("point number","point_number","point","name","id"))
+        if x is None or y is None:
+            if len(columns)>=3:x,y=columns[0],columns[1]
+            else:raise ValueError("Could not automatically identify X/Easting and Y/Northing columns in the Excel file.")
+        return xlsx_parser.ColumnMapping(name_col=name,x_col=x,y_col=y,z_col=z)
+
     def _load_path(self,path:str)->None:
         file_path=Path(path)
         if file_path.stem.endswith("_converted") and file_path.suffix.casefold()==".xlsx" and self._load_batch_converted_xlsx(path): return
@@ -51,14 +70,11 @@ class CadPage(QWidget):
             suffix=file_path.suffix.casefold()
             if suffix==".kmz":points=kml_parser.parse_kmz_file(path)
             elif suffix==".kml":points=kml_parser.parse_kml_file(path)
-            elif suffix==".csv":
-                dlg=ColumnMappingDialog(csv_parser.sniff_columns(path),self)
-                if dlg.exec()!=dlg.Accepted:return
-                points=csv_parser.parse_csv(path,csv_parser.ColumnMapping(**dlg.result_mapping()))
+            elif suffix==".csv":points=csv_parser.parse_csv_auto(path)
             elif suffix==".xlsx":
-                dlg=ColumnMappingDialog(xlsx_parser.sniff_columns(path),self)
-                if dlg.exec()!=dlg.Accepted:return
-                points=xlsx_parser.parse_xlsx(path,xlsx_parser.ColumnMapping(**dlg.result_mapping()))
+                columns=xlsx_parser.sniff_columns(path)
+                mapping=self._auto_xlsx_mapping(columns)
+                points=xlsx_parser.parse_xlsx(path,mapping)
             elif suffix==".txt":points=txt_parser.parse_txt(path)
             else:raise ValueError(f"Unsupported file type: {suffix}")
             if not points:raise ValueError("No coordinate points were found in the selected file.")
@@ -71,7 +87,7 @@ class CadPage(QWidget):
             wb=openpyxl.load_workbook(path,read_only=True,data_only=True); ws=wb["Points"] if "Points" in wb.sheetnames else wb.active; rows=list(ws.iter_rows(values_only=True)); info=wb["Project Info"] if "Project Info" in wb.sheetnames else None; target_crs=None
             if info:
                 for row in info.iter_rows(values_only=True):
-                    if row and str(row[0]).strip()=="Target CRS" and len(row)>1: target_crs=str(row[1]).strip()
+                    if row and str(row[0]).strip()=="Target CRS" and len(row)>1:target_crs=str(row[1]).strip()
             wb.close()
             if not rows:return False
             headers=[str(x).strip() if x is not None else "" for x in rows[0]]; idx={h:i for i,h in enumerate(headers)}
@@ -91,7 +107,7 @@ class CadPage(QWidget):
         except Exception:name=epsg
         self.source_picker.set_selected(epsg,name);self.target_picker.set_selected(epsg,name)
     def _convert(self)->None:
-        if self.direct_mode.isChecked(): self._mode_changed(); return
+        if self.direct_mode.isChecked():self._mode_changed();return
         if self.batch_converted:QMessageBox.information(self,"Already Converted","This file was produced by Batch Converter and is already in the target CRS. Export it directly to DXF or Civil 3D CSV.");return
         if not self.source_points:QMessageBox.warning(self,"No data","Choose a coordinate file first.");return
         src=self.source_picker.selected_epsg();tgt=self.target_picker.selected_epsg()
@@ -106,10 +122,9 @@ class CadPage(QWidget):
             for j,value in enumerate([p.name,p.tgt_x,p.tgt_y,p.tgt_z,p.status,p.message]):self.table.setItem(i,j,QTableWidgetItem(fmt(value)))
     def _export_dxf(self)->None:
         if self.direct_mode.isChecked() and self.source_points:
-            valid=[p for p in self.source_points if p.src_x is not None and p.src_y is not None]
-            export_points=[PointResult(p.name,p.src_x,p.src_y,p.src_z,p.src_x,p.src_y,p.src_z,status="SUCCESS",message="DIRECT — no CRS conversion") for p in valid]
+            valid=[p for p in self.source_points if p.src_x is not None and p.src_y is not None];export_points=[PointResult(p.name,p.src_x,p.src_y,p.src_z,p.src_x,p.src_y,p.src_z,status="SUCCESS",message="DIRECT — no CRS conversion") for p in valid]
             if not export_points:QMessageBox.warning(self,"Nothing to export","No valid X/Y coordinates found in the selected file.");return
-        else: valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None]; export_points=valid
+        else:valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None];export_points=valid
         if not export_points:QMessageBox.warning(self,"Nothing to export","There are no validated coordinates to export.");return
         path,_=QFileDialog.getSaveFileName(self,"Export DXF","CAD_Points.dxf","AutoCAD DXF (*.dxf)")
         if not path:return
@@ -117,10 +132,9 @@ class CadPage(QWidget):
         except Exception as exc:QMessageBox.critical(self,"DXF Export Error",str(exc))
     def _export_civil3d_csv(self)->None:
         if self.direct_mode.isChecked() and self.source_points:
-            valid=[p for p in self.source_points if p.src_x is not None and p.src_y is not None]
-            rows=[(p.src_x,p.src_y,p.src_z,p.name) for p in valid]
+            valid=[p for p in self.source_points if p.src_x is not None and p.src_y is not None];rows=[(p.src_x,p.src_y,p.src_z,p.name) for p in valid]
         else:
-            valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None]; rows=[(p.tgt_x,p.tgt_y,p.tgt_z,p.name) for p in valid]
+            valid=[p for p in self.result_points if p.status=="SUCCESS" and p.tgt_x is not None and p.tgt_y is not None];rows=[(p.tgt_x,p.tgt_y,p.tgt_z,p.name) for p in valid]
         if not rows:QMessageBox.warning(self,"Nothing to export","There are no valid coordinates to export.");return
         path,_=QFileDialog.getSaveFileName(self,"Export Civil 3D CSV","Civil3D_Points.csv","CSV (*.csv)")
         if not path:return
