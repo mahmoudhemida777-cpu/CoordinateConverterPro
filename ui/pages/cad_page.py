@@ -1,14 +1,14 @@
 from __future__ import annotations
 import csv
 from pathlib import Path
-import openpyxl
-from PySide6.QtCore import Qt, QPointF
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QPen, QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFileDialog,
     QTableWidget,QTableWidgetItem,QProgressBar,QMessageBox,QGroupBox,QCheckBox,
     QComboBox,QRadioButton,QHeaderView,QSizePolicy,QSplitter,QGraphicsView,
-    QGraphicsScene,QGraphicsEllipseItem,QGraphicsTextItem,QGraphicsLineItem
+    QGraphicsScene,QGraphicsEllipseItem,QGraphicsTextItem,QGraphicsLineItem,
+    QScrollArea
 )
 from core.crs.engine import CRSEngine
 from core.models import PointResult
@@ -19,44 +19,37 @@ from ui.widgets.crs_picker import CRSPicker
 from ui.widgets.workspace_bar import WorkspaceFileBar
 from ui.pages.settings_page import current_precision
 
-
-
-def _make_collapsible(box: QGroupBox, title: str) -> None:
-    """Make CAD option sections clickable, visible and easy to scan."""
-    box.setCheckable(True)
-    box.setChecked(True)
-
-    def toggle(checked: bool) -> None:
-        box.setTitle(("▼ " if checked else "▶ ") + title)
-        layout = box.layout()
-        if layout is None:
-            return
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-            widget = item.widget()
-            if widget is not None:
-                widget.setVisible(checked)
-
-    box.toggled.connect(toggle)
-    toggle(True)
-
 COORDINATE_FILTER="Coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ/KML (*.kmz *.kml);;CSV (*.csv);;Excel (*.xlsx);;Survey TXT (*.txt);;All files (*.*)"
+
+
+def _section(box: QGroupBox, number: str, title: str) -> None:
+    """Stable section styling: never disables its children and never overlaps them."""
+    box.setTitle(f"{number}  {title}")
+    box.setCheckable(False)
+    box.setFlat(False)
+
 
 class CadPage(QWidget):
     def __init__(self)->None:
-        super().__init__(); self.setObjectName("cadPage"); self.engine=CRSEngine(); self.source_points=[]; self.result_points=[]; self.current_file=None; self.workspace_folder=None; self._detected_columns=[]; self._axis_swapped=False
-        root=QVBoxLayout(self); root.setContentsMargins(20,16,20,20); root.setSpacing(10)
-        title_row=QHBoxLayout(); title=QLabel("CAD / Civil 3D Converter"); title.setObjectName("pageTitle"); title_row.addWidget(title); title_row.addStretch(); self.reset_btn=QPushButton("Reset"); self.reset_btn.clicked.connect(self._reset_page); title_row.addWidget(self.reset_btn); root.addLayout(title_row)
+        super().__init__()
+        self.setObjectName("cadPage")
+        self.engine=CRSEngine(); self.source_points=[]; self.result_points=[]
+        self.current_file=None; self.workspace_folder=None; self._detected_columns=[]; self._axis_swapped=False
+
+        root=QVBoxLayout(self); root.setContentsMargins(18,14,18,16); root.setSpacing(8)
+        title_row=QHBoxLayout(); title=QLabel("CAD / Civil 3D Converter"); title.setObjectName("pageTitle")
+        title_row.addWidget(title); title_row.addStretch(); self.reset_btn=QPushButton("Reset"); self.reset_btn.setObjectName("secondaryButton"); self.reset_btn.clicked.connect(self._reset_page); title_row.addWidget(self.reset_btn); root.addLayout(title_row)
         sub=QLabel("Convert survey points to CAD (DXF) or Civil 3D (CSV) — Smart Parsing, Axis Control and independent Grid/Zigzag ordering."); sub.setWordWrap(True); sub.setObjectName("pageSubtitle"); root.addWidget(sub)
         self.workspace_bar=WorkspaceFileBar(); self.workspace_bar.file_selected.connect(self._load_path); root.addWidget(self.workspace_bar)
-        file_row=QHBoxLayout(); self.file_status=QLabel("No coordinate file loaded"); self.file_status.setWordWrap(True); file_row.addWidget(self.file_status,1); choose=QPushButton("Open / Change File"); choose.clicked.connect(self._choose_file); file_row.addWidget(choose); root.addLayout(file_row)
+        file_row=QHBoxLayout(); file_row.setSpacing(8); self.file_status=QLabel("No coordinate file loaded"); self.file_status.setWordWrap(True); file_row.addWidget(self.file_status,1); choose=QPushButton("Open / Change File"); choose.clicked.connect(self._choose_file); file_row.addWidget(choose); root.addLayout(file_row)
         self.direct_mode=QCheckBox("DIRECT CAD EXPORT — use loaded coordinates exactly as they are (NO CRS conversion)"); self.direct_mode.stateChanged.connect(self._mode_changed); root.addWidget(self.direct_mode)
 
-        split=QSplitter(Qt.Orientation.Horizontal); split.setChildrenCollapsible(False); root.addWidget(split,1)
-        left=QWidget(); ll=QVBoxLayout(left); ll.setContentsMargins(0,0,8,0); ll.setSpacing(8)
-        right=QWidget(); rl=QVBoxLayout(right); rl.setContentsMargins(8,0,0,0); rl.setSpacing(8)
+        split=QSplitter(Qt.Orientation.Horizontal); split.setChildrenCollapsible(False); split.setHandleWidth(5); root.addWidget(split,1)
+        left_content=QWidget(); ll=QVBoxLayout(left_content); ll.setContentsMargins(2,2,8,2); ll.setSpacing(7)
+        left_scroll=QScrollArea(); left_scroll.setWidgetResizable(True); left_scroll.setFrameShape(QScrollArea.Shape.NoFrame); left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); left_scroll.setWidget(left_content)
+        right=QWidget(); rl=QVBoxLayout(right); rl.setContentsMargins(8,2,2,2); rl.setSpacing(7)
 
-        parsing=QGroupBox("1  FILE & PARSING OPTIONS"); pg=QGridLayout(parsing); pg.setHorizontalSpacing(8); pg.setVerticalSpacing(7)
+        parsing=QGroupBox(); _section(parsing,"1","FILE & PARSING OPTIONS"); pg=QGridLayout(parsing); pg.setContentsMargins(12,22,12,12); pg.setHorizontalSpacing(8); pg.setVerticalSpacing(7)
         self.parsing_engine=QComboBox(); self.parsing_engine.addItems(["Smart (Recommended)","Manual / Selected Columns"])
         self.detected_format=QComboBox(); self.detected_format.setEnabled(False)
         pg.addWidget(QLabel("Parsing Engine"),0,0); pg.addWidget(self.parsing_engine,0,1); pg.addWidget(QLabel("Detected Format"),0,2); pg.addWidget(self.detected_format,0,3)
@@ -64,43 +57,37 @@ class CadPage(QWidget):
         for c in (self.x_column,self.y_column,self.z_column,self.name_column): c.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
         pg.addWidget(QLabel("Easting / X"),1,0); pg.addWidget(self.x_column,1,1); pg.addWidget(QLabel("Northing / Y"),1,2); pg.addWidget(self.y_column,1,3)
         pg.addWidget(QLabel("Elevation / Z"),2,0); pg.addWidget(self.z_column,2,1); pg.addWidget(QLabel("Point Code / Name"),2,2); pg.addWidget(self.name_column,2,3)
-        for col in (1,3): pg.setColumnStretch(col,1)
-        _make_collapsible(parsing, "1  FILE & PARSING OPTIONS")
-        parsing.setMinimumHeight(112)
-        ll.addWidget(parsing)
+        pg.setColumnStretch(1,1); pg.setColumnStretch(3,1); ll.addWidget(parsing)
 
-        axis=QGroupBox("2  AXIS ORDER — IMPORTANT"); af=QHBoxLayout(axis); self.axis_xy=QRadioButton("Easting (X) → Northing (Y)  |  Standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X)  |  SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); _make_collapsible(axis, "2  AXIS ORDER — IMPORTANT"); axis.setMinimumHeight(82); ll.addWidget(axis)
+        axis=QGroupBox(); _section(axis,"2","AXIS ORDER — IMPORTANT"); af=QVBoxLayout(axis); af.setContentsMargins(12,22,12,10); af.setSpacing(4)
+        self.axis_xy=QRadioButton("Easting (X) → Northing (Y)  |  Standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X)  |  SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); ll.addWidget(axis)
 
-
-        ordering=QGroupBox("3  GRID / ZIGZAG POINT NUMBERING"); og=QGridLayout(ordering); og.setVerticalSpacing(7)
+        ordering=QGroupBox(); _section(ordering,"3","GRID / ZIGZAG POINT NUMBERING"); og=QGridLayout(ordering); og.setContentsMargins(12,22,12,12); og.setVerticalSpacing(7)
         self.ordering_mode=QComboBox(); self.ordering_mode.addItem("Grid Zigzag — Start West (W → E)","GRID_ZIGZAG_WEST"); self.ordering_mode.addItem("Grid Zigzag — Start East (E → W)","GRID_ZIGZAG_EAST"); self.ordering_mode.addItem("Keep Source Order","SOURCE")
         og.addWidget(QLabel("Pattern"),0,0); og.addWidget(self.ordering_mode,0,1,1,2)
         self.group_by_name=QCheckBox("Group by Point Code / Name — each code is ordered independently"); self.group_by_name.setChecked(True); og.addWidget(self.group_by_name,1,0,1,3)
-        self.auto_grid=QCheckBox("Auto-detect grid rows"); self.auto_grid.setChecked(True); og.addWidget(self.auto_grid,2,0); self.tolerance_combo=QComboBox(); self.tolerance_combo.addItems(["Auto","0.01","0.05","0.10","0.25","0.50","1.00"]); og.addWidget(QLabel("Row tolerance (m)"),2,1); og.addWidget(self.tolerance_combo,2,2)
-        self.renumber_preview=QPushButton("Apply & Preview Zigzag"); self.renumber_preview.clicked.connect(self._refresh_preview); og.addWidget(self.renumber_preview,3,0,1,3)
-        self.axis_xy.toggled.connect(lambda _: self._refresh_preview())
-        self.axis_yx.toggled.connect(lambda _: self._refresh_preview())
-        self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview())
-        self.group_by_name.toggled.connect(lambda _: self._refresh_preview())
-        _make_collapsible(ordering, "3  GRID / ZIGZAG POINT NUMBERING")
-        ordering.setMinimumHeight(160)
-        ll.addWidget(ordering)
+        self.auto_grid=QCheckBox("Auto-detect grid rows"); self.auto_grid.setChecked(True); og.addWidget(self.auto_grid,2,0)
+        self.tolerance_combo=QComboBox(); self.tolerance_combo.addItems(["Auto","0.01","0.05","0.10","0.25","0.50","1.00"]); og.addWidget(QLabel("Row tolerance (m)"),2,1); og.addWidget(self.tolerance_combo,2,2)
+        self.renumber_preview=QPushButton("Apply & Preview Zigzag"); self.renumber_preview.clicked.connect(self._refresh_preview); og.addWidget(self.renumber_preview,3,0,1,3); ll.addWidget(ordering)
 
-        advanced=QGroupBox("4  ADVANCED OPTIONS"); ag=QHBoxLayout(advanced); self.auto_crs=QCheckBox("Auto Detect CRS"); self.auto_crs.setChecked(True); self.write_code=QCheckBox("Write Point Code to DXF"); self.write_code.setChecked(True); ag.addWidget(self.auto_crs); ag.addWidget(self.write_code); ag.addStretch(); _make_collapsible(advanced, "4  ADVANCED OPTIONS"); advanced.setMinimumHeight(68); ll.addWidget(advanced)
+        advanced=QGroupBox(); _section(advanced,"4","ADVANCED OPTIONS"); ag=QHBoxLayout(advanced); ag.setContentsMargins(12,22,12,10); self.auto_crs=QCheckBox("Auto Detect CRS"); self.auto_crs.setChecked(True); self.write_code=QCheckBox("Write Point Code to DXF"); self.write_code.setChecked(True); ag.addWidget(self.auto_crs); ag.addWidget(self.write_code); ag.addStretch(); ll.addWidget(advanced)
 
-        crs=QGroupBox("COORDINATE REFERENCE SYSTEM"); cg=QHBoxLayout(crs); self.source_picker=CRSPicker(self.engine,"SOURCE CRS"); self.target_picker=CRSPicker(self.engine,"TARGET CRS"); cg.addWidget(self.source_picker,1); cg.addWidget(self.target_picker,1); crs.setMinimumHeight(92); ll.addWidget(crs)
+        crs=QGroupBox("COORDINATE REFERENCE SYSTEM"); cg=QHBoxLayout(crs); cg.setContentsMargins(12,22,12,10); self.source_picker=CRSPicker(self.engine,"SOURCE CRS"); self.target_picker=CRSPicker(self.engine,"TARGET CRS"); cg.addWidget(self.source_picker,1); cg.addWidget(self.target_picker,1); ll.addWidget(crs)
         self.convert_btn=QPushButton("CONVERT & PREPARE FOR CAD / CIVIL 3D"); self.convert_btn.clicked.connect(self._convert); ll.addWidget(self.convert_btn)
         self.progress=QProgressBar(); self.progress.setRange(0,100); ll.addWidget(self.progress)
-        summary=QHBoxLayout(); self.total=QLabel("Total: 0"); self.success=QLabel("Success: 0"); self.failed=QLabel("Failed: 0"); summary.addWidget(self.total); summary.addWidget(self.success); summary.addWidget(self.failed); summary.addStretch(); ll.addLayout(summary)
-        split.addWidget(left)
+        summary=QHBoxLayout(); summary.setSpacing(12); self.total=QLabel("Total: 0"); self.success=QLabel("Success: 0"); self.failed=QLabel("Failed: 0"); summary.addWidget(self.total); summary.addWidget(self.success); summary.addWidget(self.failed); summary.addStretch(); ll.addLayout(summary); ll.addStretch(1)
+        split.addWidget(left_scroll)
 
-        preview_box=QGroupBox("PREVIEW — POINTS / ZIGZAG PATH"); pv=QVBoxLayout(preview_box); tools=QHBoxLayout(); fit=QPushButton("Fit"); fit.clicked.connect(self._fit_scene); zoom_in=QPushButton("Zoom +"); zoom_in.clicked.connect(lambda:self.map_view.scale(1.25,1.25)); zoom_out=QPushButton("Zoom −"); zoom_out.clicked.connect(lambda:self.map_view.scale(.8,.8)); tools.addWidget(fit); tools.addWidget(zoom_in); tools.addWidget(zoom_out); tools.addStretch(); self.preview_info=QLabel("0 points"); tools.addWidget(self.preview_info); pv.addLayout(tools)
-        self.scene=QGraphicsScene(); self.map_view=QGraphicsView(self.scene); self.map_view.setMinimumHeight(300); self.map_view.setRenderHint(self.map_view.renderHints()); pv.addWidget(self.map_view,1)
-        legend=QLabel("Point = survey coordinate   |   Green = label   |   Blue = zigzag direction   |   Groups are independent when enabled"); legend.setWordWrap(True); pv.addWidget(legend); rl.addWidget(preview_box,1)
-        export_row=QHBoxLayout(); dxf=QPushButton("EXPORT DXF"); civil=QPushButton("EXPORT CIVIL 3D CSV"); dxf.clicked.connect(self._export_dxf); civil.clicked.connect(self._export_civil3d_csv); export_row.addWidget(dxf,1); export_row.addWidget(civil,1); rl.addLayout(export_row)
-        split.addWidget(right); split.setSizes([620,760])
+        preview_box=QGroupBox("PREVIEW — POINTS / ZIGZAG PATH"); pv=QVBoxLayout(preview_box); pv.setContentsMargins(10,22,10,10)
+        tools=QHBoxLayout(); tools.setSpacing(6); fit=QPushButton("Fit"); fit.clicked.connect(self._fit_scene); zoom_in=QPushButton("Zoom +"); zoom_in.clicked.connect(lambda:self.map_view.scale(1.25,1.25)); zoom_out=QPushButton("Zoom −"); zoom_out.clicked.connect(lambda:self.map_view.scale(.8,.8)); tools.addWidget(fit); tools.addWidget(zoom_in); tools.addWidget(zoom_out); tools.addStretch(); self.preview_info=QLabel("0 points"); tools.addWidget(self.preview_info); pv.addLayout(tools)
+        self.scene=QGraphicsScene(); self.map_view=QGraphicsView(self.scene); self.map_view.setMinimumHeight(260); self.map_view.setRenderHint(self.map_view.renderHints()); pv.addWidget(self.map_view,1)
+        legend=QLabel("Point = coordinate  |  Label = code/name  |  Dashed line = zigzag order  |  Groups are independent"); legend.setWordWrap(True); legend.setObjectName("pageSubtitle"); pv.addWidget(legend); rl.addWidget(preview_box,1)
+        export_row=QHBoxLayout(); export_row.setSpacing(8); dxf=QPushButton("EXPORT DXF"); civil=QPushButton("EXPORT CIVIL 3D CSV"); dxf.clicked.connect(self._export_dxf); civil.clicked.connect(self._export_civil3d_csv); export_row.addWidget(dxf,1); export_row.addWidget(civil,1); rl.addLayout(export_row)
+        split.addWidget(right); split.setSizes([560,820]); split.setStretchFactor(0,0); split.setStretchFactor(1,1)
 
-        table_box=QGroupBox("POINTS PREVIEW TABLE"); tl=QVBoxLayout(table_box); self.table=QTableWidget(0,6); self.table.setHorizontalHeaderLabels(["#","Point Code / Name","Easting / X","Northing / Y","Elevation / Z","Status"]); self.table.setMinimumHeight(170); self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); tl.addWidget(self.table); root.addWidget(table_box)
+        table_box=QGroupBox("POINTS PREVIEW TABLE"); tl=QVBoxLayout(table_box); tl.setContentsMargins(10,22,10,8); self.table=QTableWidget(0,6); self.table.setHorizontalHeaderLabels(["#","Point Code / Name","Easting / X","Northing / Y","Elevation / Z","Status"]); self.table.setMinimumHeight(145); self.table.setAlternatingRowColors(True); self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.table.verticalHeader().setDefaultSectionSize(28); tl.addWidget(self.table); root.addWidget(table_box)
+
+        self.axis_xy.toggled.connect(lambda _: self._refresh_preview()); self.axis_yx.toggled.connect(lambda _: self._refresh_preview()); self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview()); self.group_by_name.toggled.connect(lambda _: self._refresh_preview())
 
     def set_workspace_folder(self,folder:str):
         self.workspace_folder=folder; self.workspace_bar.set_folder(folder,self.current_file)
@@ -184,16 +171,18 @@ class CadPage(QWidget):
             p=item.point; x=p.tgt_x if p.tgt_x is not None else p.src_x; y=p.tgt_y if p.tgt_y is not None else p.src_y
             if x is not None and y is not None: valid.append((item,float(x),float(y)))
         if not valid:self.preview_info.setText("No valid coordinates"); return
-        minx,maxx=min(v[1] for v in valid),max(v[1] for v in valid); miny,maxy=min(v[2] for v in valid),max(v[2] for v in valid); dx=max(maxx-minx,1.0); dy=max(maxy-miny,1.0); sx=700/dx; sy=500/dy; scale=min(sx,sy); ox=40-minx*scale; oy=40+maxy*scale
+        minx,maxx=min(v[1] for v in valid),max(v[1] for v in valid); miny,maxy=min(v[2] for v in valid),max(v[2] for v in valid); dx=max(maxx-minx,1.0); dy=max(maxy-miny,1.0); scale=min(700/dx,480/dy); ox=40-minx*scale; oy=40+maxy*scale
         colors=["#35D07F","#FFC107","#29B6F6","#AB69FF","#FF5B6E","#00BCD4","#FF8A65"]
         positions={item.number:(x*scale+ox,oy-y*scale) for item,x,y in valid}; groups={}
         for item,_,_ in valid: groups.setdefault(item.group,[]).append(item.number)
+        by_number={item.number:item for item,_,_ in valid}
         for gi,(group,numbers) in enumerate(groups.items()):
             color=QColor(colors[gi%len(colors)]); nums=[n for n in numbers if n in positions]
             for a,b in zip(nums,nums[1:]):
                 x1,y1=positions[a]; x2,y2=positions[b]; line=QGraphicsLineItem(x1,y1,x2,y2); line.setPen(QPen(color,1.6,Qt.PenStyle.DashLine)); self.scene.addItem(line)
-            for n in nums:
-                x,y=positions[n]; point=QGraphicsEllipseItem(x-4,y-4,8,8); point.setBrush(QBrush(color)); point.setPen(QPen(QColor("#0B1420"),1)); self.scene.addItem(point); name=next(i.point.name for i,_,_ in valid if i.number==n); text=QGraphicsTextItem(str(name or n)); text.setDefaultTextColor(color); text.setFont(QFont("Segoe UI",9,QFont.Weight.Bold)); text.setPos(x+6,y-9); self.scene.addItem(text)
+            for idx,n in enumerate(nums):
+                x,y=positions[n]; point=QGraphicsEllipseItem(x-4,y-4,8,8); point.setBrush(QBrush(color)); point.setPen(QPen(QColor("#0B1420"),1)); self.scene.addItem(point)
+                text=QGraphicsTextItem(str(by_number[n].point.name or n)); text.setDefaultTextColor(color); text.setFont(QFont("Segoe UI",8,QFont.Weight.Bold)); text.setPos(x+6,y-9 + (idx%2)*11); self.scene.addItem(text)
         self.scene.setSceneRect(0,0,780,540); self.preview_info.setText(f"{len(valid)} points  |  {len(groups)} code/name groups"); self._fit_scene()
 
     def _fit_scene(self):
@@ -201,11 +190,11 @@ class CadPage(QWidget):
         self.map_view.fitInView(self.scene.itemsBoundingRect().adjusted(-20,-20,20,20),Qt.AspectRatioMode.KeepAspectRatio)
 
     def _populate_table(self,ordered):
-        precision=current_precision(); self.table.setRowCount(len(ordered));
+        precision=current_precision(); self.table.setRowCount(len(ordered))
         for r,item in enumerate(ordered):
             p=item.point; x=p.tgt_x if p.tgt_x is not None else p.src_x; y=p.tgt_y if p.tgt_y is not None else p.src_y; z=p.tgt_z if p.tgt_z is not None else p.src_z
             vals=[item.number,p.name,"" if x is None else f"{x:.{precision}f}","" if y is None else f"{y:.{precision}f}","" if z is None else f"{z:.{precision}f}",p.status]
-            for c,v in enumerate(vals):self.table.setItem(r,c,QTableWidgetItem(str(v)))
+            for c,v in enumerate(vals): self.table.setItem(r,c,QTableWidgetItem(str(v)))
 
     def _populate(self):
         pts=self.result_points if self.result_points else self.source_points; self.total.setText(f"Total: {len(pts)}"); self.success.setText(f"Success: {sum(p.status=='SUCCESS' for p in pts)}"); self.failed.setText(f"Failed: {sum(p.status=='FAILED' for p in pts)}")
@@ -214,12 +203,12 @@ class CadPage(QWidget):
         if not self.source_points: QMessageBox.warning(self,"No data","Choose a coordinate file first."); return
         if self.direct_mode.isChecked(): self._mode_changed(); return
         if self.parsing_engine.currentIndex()==1:
-            try: mapped=self._apply_manual_mapping();
+            try: mapped=self._apply_manual_mapping()
             except Exception as exc: QMessageBox.critical(self,"Parsing Error",str(exc)); return
             if mapped: self.source_points=self._apply_axis(mapped); self._refresh_preview()
         src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
         if not src or not tgt: QMessageBox.warning(self,"No CRS","Select Source CRS and Target CRS, or enable DIRECT CAD EXPORT."); return
-        self.result_points=[]; self.progress.setRange(0,len(self.source_points));
+        self.result_points=[]; self.progress.setRange(0,len(self.source_points))
         for i,p in enumerate(self.source_points,1): self.result_points.append(self.engine.transform_points(src,tgt,[p])[0]); self.progress.setValue(i)
         self._populate(); self._refresh_preview()
 
@@ -227,7 +216,7 @@ class CadPage(QWidget):
         pts=self.result_points if not self.direct_mode.isChecked() else [PointResult(p.name,p.src_x,p.src_y,p.src_z,p.src_x,p.src_y,p.src_z,status="SUCCESS") for p in self.source_points]
         valid=[p for p in pts if p.status=="SUCCESS" and (p.tgt_x if not self.direct_mode.isChecked() else p.src_x) is not None and (p.tgt_y if not self.direct_mode.isChecked() else p.src_y) is not None]
         if not valid: QMessageBox.warning(self,"Nothing to export","No validated coordinates are available."); return
-        path,_=QFileDialog.getSaveFileName(self,"Export DXF","CAD_Points.dxf","AutoCAD DXF (*.dxf)");
+        path,_=QFileDialog.getSaveFileName(self,"Export DXF","CAD_Points.dxf","AutoCAD DXF (*.dxf)")
         if not path:return
         try:
             export_dxf(valid,path,label_mode=LabelMode.NAME if self.write_code.isChecked() else LabelMode.NUMBER,text_height=1.0,use_target_coords=not self.direct_mode.isChecked(),order_mode=str(self.ordering_mode.currentData()),group_by_name=self.group_by_name.isChecked()); QMessageBox.information(self,"DXF Exported",f"DXF created successfully:\n{path}")
@@ -235,7 +224,7 @@ class CadPage(QWidget):
 
     def _export_civil3d_csv(self):
         pts=self.result_points if not self.direct_mode.isChecked() else [PointResult(p.name,p.src_x,p.src_y,p.src_z,p.src_x,p.src_y,p.src_z,status="SUCCESS") for p in self.source_points]
-        valid=[p for p in pts if p.status=="SUCCESS"]; path,_=QFileDialog.getSaveFileName(self,"Export Civil 3D CSV","Civil3D_Points.csv","CSV (*.csv)");
+        valid=[p for p in pts if p.status=="SUCCESS"]; path,_=QFileDialog.getSaveFileName(self,"Export Civil 3D CSV","Civil3D_Points.csv","CSV (*.csv)")
         if not path:return
         precision=current_precision(); ordered=order_points(valid,mode=str(self.ordering_mode.currentData()),group_by_name=self.group_by_name.isChecked())
         try:
