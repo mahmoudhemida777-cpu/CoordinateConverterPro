@@ -13,20 +13,21 @@ from ui.pages.history_page import HistoryPage
 from ui.pages.settings_page import SettingsPage
 from ui.pages.about_page import AboutPage
 from ui.i18n import tr
+from ui.theme import apply_theme
 
 APP_NAME="MH GeoSuite Pro"; APP_TAGLINE="Professional Surveying & Geospatial Engineering Suite"
 SIDEBAR_ITEMS=[("dashboard","Dashboard"),("import","Import"),("converter","CRS Converter"),("survey","Survey Tools"),("cad","Civil / CAD"),("batch","Batch Converter"),("map","Map"),("history","History"),("settings","Settings"),("about","About")]
 
 class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__(); self.setWindowTitle(APP_NAME); self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)); self.resize(1200,800); self.workspace_folder=None
+        super().__init__(); apply_theme(self.window().windowHandle().screen().context() if False else __import__('PySide6.QtWidgets',fromlist=['QApplication']).QApplication.instance()); self.setWindowTitle(APP_NAME); self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)); self.resize(1440,900); self.setMinimumSize(1100,700); self.workspace_folder=None
         central=QWidget(); self.setCentralWidget(central); layout=QHBoxLayout(central); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
-        self.sidebar=QListWidget(); self.sidebar.setFixedWidth(200); self.sidebar.setObjectName("sidebar")
+        self.sidebar=QListWidget(); self.sidebar.setFixedWidth(210); self.sidebar.setObjectName("sidebar")
         for key,label in SIDEBAR_ITEMS:
             item=QListWidgetItem(tr(label)); item.setData(Qt.UserRole,key); self.sidebar.addItem(item)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_changed)
         right=QWidget(); right_layout=QVBoxLayout(right); right_layout.setContentsMargins(0,0,0,0); right_layout.setSpacing(0)
-        self.workspace_banner=QLabel("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard"); self.workspace_banner.setStyleSheet("background:#1F3864;color:white;padding:8px 14px;font-weight:bold;"); right_layout.addWidget(self.workspace_banner)
+        self.workspace_banner=QLabel("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard"); self.workspace_banner.setObjectName("workspaceBanner"); right_layout.addWidget(self.workspace_banner)
         self.stack=QStackedWidget(); self.pages={"dashboard":DashboardPage(),"import":ImportPage(),"converter":ConverterPage(),"survey":SurveyPage(),"cad":CadPage(),"batch":BatchPage(),"map":MapPage(),"history":HistoryPage(),"settings":SettingsPage(),"about":AboutPage()}
         for key,_ in SIDEBAR_ITEMS:self.stack.addWidget(self.pages[key])
         self.pages["dashboard"].file_selected.connect(self._set_active_file); self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder); self.pages["batch"].batch_completed.connect(self._on_batch_completed); self.pages["history"].file_reloaded.connect(self._reload_history_file)
@@ -56,4 +57,5 @@ class MainWindow(QMainWindow):
             if callable(loader) and loader(output_paths[0]):self.statusBar().showMessage(f"Batch result ready for CAD/Civil 3D: {output_paths[0]}")
 
     def _on_sidebar_changed(self,row:int):
+        if row < 0 or row >= len(SIDEBAR_ITEMS): return
         key,_=SIDEBAR_ITEMS[row]; self.stack.setCurrentWidget(self.pages[key])
