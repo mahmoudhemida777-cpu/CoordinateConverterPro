@@ -91,6 +91,11 @@ def apply_theme(app: QApplication, theme: str | None = None) -> None:
     QProgressBar {{ background:{c['BASE']}; border:1px solid {c['BORDER']}; border-radius:5px; text-align:center; color:{c['TEXT']}; min-height:12px; }}
     QProgressBar::chunk {{ background:{c['BLUE']}; border-radius:4px; }}
     QTableWidget,QTreeWidget,QListWidget {{ background:{c['BASE']}; alternate-background-color:{c['SURFACE_2']}; color:{c['TEXT']}; border:1px solid {c['BORDER']}; gridline-color:{c['BORDER']}; selection-background-color:{c['BLUE']}; selection-color:#FFFFFF; }}
+    QTableWidget::item:selected,QTreeWidget::item:selected,QListWidget::item:selected {{ background:{c['BLUE']}; color:#FFFFFF; font-weight:700; }}
+    QTableWidget::item:selected:active,QTreeWidget::item:selected:active,QListWidget::item:selected:active {{ background:{c['BLUE_HOVER']}; color:#FFFFFF; }}
+    QTableWidget::item:selected:!active,QTreeWidget::item:selected:!active,QListWidget::item:selected:!active {{ background:{c['BLUE']}; color:#FFFFFF; }}
+    #projectFilesTable::item:selected {{ background:{c['BLUE_HOVER']}; color:#FFFFFF; font-weight:700; border:1px solid {c['GOLD']}; }}
+    #projectFilesTable:focus {{ border:2px solid {c['BLUE_HOVER']}; }}
     QHeaderView::section {{ background:{c['SURFACE_2']}; color:{c['TEXT']}; border:0; border-right:1px solid {c['BORDER']}; border-bottom:1px solid {c['BORDER']}; padding:7px; font-weight:700; }}
     QSplitter::handle {{ background:{c['BORDER']}; }}
     QSplitter::handle:horizontal {{ width:4px; margin:3px 0; border-radius:2px; }}
