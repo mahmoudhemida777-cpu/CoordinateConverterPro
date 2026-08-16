@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   fix:
-    if: ${{ github.event.head_commit.message == 'Run CAD preview removal' }}
+    if: ${{ github.event.head_commit.message == 'Run CAD preview removal v2' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,11 +25,10 @@ jobs:
           s = s.replace('    QGraphicsTextItem, QGraphicsLineItem, QScrollArea, QFrame, QToolButton,\n', '    QScrollArea,\n')
           s = s.replace('        self._preview_expanded = False\n', '')
           s = re.sub(r'        split = QSplitter\(Qt\.Orientation\.Horizontal\)\n        split\.setChildrenCollapsible\(False\)\n        split\.setHandleWidth\(5\)\n        root\.addWidget\(split, 1\)\n', '', s, count=1)
-          s = s.replace('        split.addWidget(left_scroll)\n\n        # -------------------- RIGHT: professional preview --------------------\n', '')
           start = s.find('        # -------------------- RIGHT: professional preview --------------------\n')
           end = s.find('        table_box = QGroupBox("POINTS PREVIEW TABLE")', start)
           if start < 0 or end < 0:
-              raise SystemExit('CAD preview block anchors were not found')
+              raise SystemExit(f'CAD preview block anchors were not found: start={start}, end={end}')
           replacement = '''        root.addWidget(left_scroll, 1)\n\n        export_row = QHBoxLayout()\n        export_row.setSpacing(8)\n        dxf = QPushButton("EXPORT DXF")\n        civil = QPushButton("EXPORT CIVIL 3D CSV")\n        dxf.clicked.connect(self._export_dxf)\n        civil.clicked.connect(self._export_civil3d_csv)\n        export_row.addWidget(dxf, 1)\n        export_row.addWidget(civil, 1)\n        root.addLayout(export_row)\n\n'''
           s = s[:start] + replacement + s[end:]
           s = re.sub(r'        self\._set_preview_collapsed\(\)\n', '', s, count=1)
