@@ -1,6 +1,7 @@
 """MH GeoSuite Pro professional dark UI theme."""
 from PySide6.QtGui import QPalette, QColor
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QComboBox
+from PySide6.QtCore import QTimer
 
 BG = "#0B1420"
 SURFACE = "#111E2D"
@@ -13,6 +14,42 @@ BLUE_HOVER = "#2587E8"
 GOLD = "#C9A227"
 SUCCESS = "#35D07F"
 DANGER = "#F05B5B"
+
+
+def _normalize_legacy_page_styles(app: QApplication) -> None:
+    """Remove old light inline styles that would otherwise override the dark theme.
+
+    Older pages contain local white/light styles. Qt gives those widget-local
+    styles precedence over the application stylesheet, so they must be cleared
+    after the complete page tree has been constructed.
+    """
+    for widget in app.allWidgets():
+        local = widget.styleSheet() or ""
+        if not local:
+            continue
+        light_markers = (
+            "background:white",
+            "background: white",
+            "color:#1F3864",
+            "color: #1F3864",
+            "color:#555",
+            "color: #555",
+            "color:#333",
+            "color: #333",
+            "color:#777",
+            "color: #777",
+            "#C9D2DE",
+            "#D8C58A",
+        )
+        if any(marker in local for marker in light_markers):
+            # Preserve deliberately branded gold primary buttons.
+            if widget.__class__.__name__ == "QPushButton" and "#C9A227" in local:
+                widget.setStyleSheet(
+                    f"background:{GOLD};color:#FFFFFF;border:0;border-radius:7px;"
+                    "padding:9px 18px;font-weight:700;min-height:20px;"
+                )
+            else:
+                widget.setStyleSheet("")
 
 
 def apply_theme(app: QApplication) -> None:
@@ -61,3 +98,8 @@ def apply_theme(app: QApplication) -> None:
     #workspaceBanner {{ background: #10243A; color: {TEXT}; padding: 8px 14px; border-bottom: 1px solid {BORDER}; }}
     QMessageBox {{ background: {SURFACE}; }}
     """)
+
+    # Pages are built after the global theme is installed. Defer this cleanup
+    # one event-loop turn so the complete widget tree is available.
+    QTimer.singleShot(0, lambda: _normalize_legacy_page_styles(app))
+    QTimer.singleShot(500, lambda: _normalize_legacy_page_styles(app))
