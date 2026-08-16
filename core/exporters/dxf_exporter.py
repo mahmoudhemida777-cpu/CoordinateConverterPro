@@ -19,11 +19,16 @@ class LabelMode(str, Enum):
 def export_dxf(
     points: List[PointResult],
     out_path: str,
-    label_mode: LabelMode = LabelMode.NAME,
+    label_mode: LabelMode = LabelMode.NUMBER_AND_NAME,
     text_height: float = 1.0,
     use_target_coords: bool = True,
 ) -> str:
     """Write survey points as real DXF POINT entities plus labels.
+
+    Every exported point receives a sequential export number (1..N) when
+    using the default NUMBER_AND_NAME mode. The original survey point code or
+    name is retained beside that number, so random/missing source numbering
+    never prevents clean sequential CAD numbering.
 
     Target X/Y are written as Easting/Northing and target Z as elevation.
     Failed or incomplete points are skipped rather than breaking the export.
@@ -43,14 +48,15 @@ def export_dxf(
 
         msp.add_point((float(x), float(y), float(z)), dxfattribs={"layer": "POINTS"})
 
+        original_name = str(p.name or "").strip()
         if label_mode == LabelMode.NUMBER:
             label = str(i)
         elif label_mode == LabelMode.NAME:
-            label = p.name
+            label = original_name or str(i)
         elif label_mode == LabelMode.COORDS:
             label = f"{float(x):.3f},{float(y):.3f}"
         else:
-            label = f"{i} - {p.name}"
+            label = f"{i} - {original_name}" if original_name else str(i)
 
         text = msp.add_text(
             label,
