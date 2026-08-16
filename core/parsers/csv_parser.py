@@ -1,12 +1,9 @@
-"""CSV parser with automatic survey-coordinate format detection."""
+"""Robust survey coordinate parser for CSV/TXT-like delimited files."""
 from __future__ import annotations
-
 import csv
 from dataclasses import dataclass
 from typing import List, Optional
-
 from core.models import PointResult
-
 
 @dataclass
 class ColumnMapping:
@@ -15,106 +12,95 @@ class ColumnMapping:
     y_col: str
     z_col: Optional[str] = None
 
-
 def _is_number(value: str) -> bool:
-    try:
-        float(value.strip())
-        return True
-    except (ValueError, AttributeError):
-        return False
-
+    try: float(str(value).strip()); return True
+    except (ValueError, TypeError): return False
 
 def _read_rows(path: str, encoding: str = "utf-8-sig") -> list[list[str]]:
-    with open(path, newline="", encoding=encoding, errors="replace") as f:
-        return [[cell.strip() for cell in row] for row in csv.reader(f) if any(cell.strip() for cell in row)]
+    with open(path, "r", encoding=encoding, errors="replace", newline="") as f:
+        sample=f.read(8192); f.seek(0)
+        try: dialect=csv.Sniffer().sniff(sample, delimiters=",;\t|")
+        except csv.Error: dialect=csv.excel
+        return [[str(c).strip() for c in row] for row in csv.reader(f,dialect) if any(str(c).strip() for c in row)]
 
+def _norm(s: object) -> str:
+    return "".join(ch for ch in str(s).strip().lower() if ch.isalnum())
 
 def _header_like(row: list[str]) -> bool:
-    if len(row) < 2:
-        return False
-    text = " ".join(x.lower() for x in row)
-    return any(k in text for k in ("easting", "northing", "longitude", "latitude", "elev", "point", "name", "x", "y", "z")) and not all(_is_number(x) for x in row[:3])
-
+    if len(row)<2:return False
+    keys=[_norm(x) for x in row]
+    aliases={"easting","east","x","xcoord","xcoordinate","northing","north","y","ycoord","ycoordinate","longitude","lon","latitude","lat","elevation","elev","height","z","zcoord","zcoordinate","point","pointnumber","pointid","name","id"}
+    return any(k in aliases or any(a in k for a in ("easting","northing","longitude","latitude","elevation","pointnumber")) for k in keys) and not all(_is_number(x) for x in row[:min(3,len(row))])
 
 def sniff_columns(path: str, encoding: str = "utf-8-sig") -> List[str]:
-    """Return real headers when present; otherwise provide safe generated headers."""
-    rows = _read_rows(path, encoding)
-    if not rows:
-        return ["Point", "Easting", "Northing", "Elevation"]
-    first = rows[0]
-    if _header_like(first):
-        return first
-    if len(first) >= 4 and not _is_number(first[0]) and _is_number(first[1]) and _is_number(first[2]):
-        return ["Point", "Easting", "Northing", "Elevation"][:len(first)]
-    return ["Easting", "Northing", "Elevation"][:len(first)]
+    rows=_read_rows(path,encoding)
+    if not rows:return ["Point","Easting","Northing","Elevation"]
+    first=rows[0]
+    if _header_like(first): return first
+    return [f"Column {i+1}" for i in range(len(first))]
 
+def _find_col(headers:list[str], aliases:tuple[str,...], fallback:int|None=None)->int|None:
+    ns=[_norm(h) for h in headers]; al=[_norm(a) for a in aliases]
+    for a in al:
+        if a in ns:return ns.index(a)
+    for i,h in enumerate(ns):
+        if any(a in h for a in al):return i
+    return fallback
 
 def parse_csv(path: str, mapping: ColumnMapping, encoding: str = "utf-8-sig") -> List[PointResult]:
-    points: List[PointResult] = []
-    with open(path, newline="", encoding=encoding, errors="replace") as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(reader, start=1):
-            name = row.get(mapping.name_col, "").strip() if mapping.name_col else f"PT-{i}"
+    rows=_read_rows(path,encoding)
+    if not rows:return []
+    headers=rows[0]; data=rows[1:] if _header_like(headers) else rows
+    if not _header_like(headers):
+        # Mapping generated for headerless data: Column N -> positional index.
+        def pos(col):
+            try:return max(0,int(str(col).split()[-1])-1)
+            except Exception:return None
+        xi,yi,zi,ni=pos(mapping.x_col),pos(mapping.y_col),pos(mapping.z_col) if mapping.z_col else None,pos(mapping.name_col) if mapping.name_col else None
+        points=[]
+        for i,row in enumerate(data,1):
             try:
-                x = float(row[mapping.x_col])
-                y = float(row[mapping.y_col])
-            except (KeyError, ValueError, TypeError):
-                points.append(PointResult(name or f"PT-{i}", None, None, None, status="FAILED", message="Invalid or missing X/Y"))
-                continue
-            z = None
-            if mapping.z_col:
-                raw_z = row.get(mapping.z_col)
-                try:
-                    z = float(raw_z) if raw_z not in (None, "") else None
-                except ValueError:
-                    z = None
-            points.append(PointResult(name or f"PT-{i}", x, y, z))
+                x=float(row[xi]); y=float(row[yi]); z=float(row[zi]) if zi is not None and len(row)>zi and str(row[zi]).strip() else None
+            except (TypeError,ValueError,IndexError): points.append(PointResult(f"PT-{i}",None,None,None,status="FAILED",message="Invalid or missing X/Y")); continue
+            name=str(row[ni]).strip() if ni is not None and len(row)>ni and str(row[ni]).strip() else f"PT-{i}"
+            points.append(PointResult(name,x,y,z))
+        return points
+    idx={h:i for i,h in enumerate(headers)}; points=[]
+    for i,row in enumerate(data,1):
+        def val(col): return row[idx[col]].strip() if col in idx and idx[col]<len(row) else ""
+        name=val(mapping.name_col) if mapping.name_col else f"PT-{i}"
+        try:x=float(val(mapping.x_col)); y=float(val(mapping.y_col))
+        except (ValueError,TypeError):points.append(PointResult(name or f"PT-{i}",None,None,None,status="FAILED",message="Invalid or missing X/Y"));continue
+        z=None
+        if mapping.z_col:
+            try:z=float(val(mapping.z_col)) if val(mapping.z_col) else None
+            except ValueError:pass
+        points.append(PointResult(name or f"PT-{i}",x,y,z))
     return points
 
-
 def parse_csv_auto(path: str, encoding: str = "utf-8-sig") -> List[PointResult]:
-    """Import survey CSV automatically, with or without a header/point column."""
-    rows = _read_rows(path, encoding)
-    if not rows:
-        return []
-
-    has_header = _header_like(rows[0])
-    data = rows[1:] if has_header else rows
-    headers = rows[0] if has_header else None
-    if not data:
-        return []
-
-    def col_index(names: tuple[str, ...], default: int | None = None) -> int | None:
-        if not headers:
-            return default
-        lowered = [h.strip().lower() for h in headers]
-        for name in names:
-            if name in lowered:
-                return lowered.index(name)
-        for i, h in enumerate(lowered):
-            if any(name in h for name in names):
-                return i
-        return default
-
-    x_idx = col_index(("easting", "east", "longitude", "lon", "x"), 0)
-    y_idx = col_index(("northing", "north", "latitude", "lat", "y"), 1)
-    z_idx = col_index(("elevation", "elev", "height", "z"), 2)
-    name_idx = col_index(("point number", "point_number", "point", "name", "id"), None)
-
-    # Headerless 4-column survey data is normally Point,E,N,Z.
-    if not has_header and len(data[0]) >= 4 and not _is_number(data[0][0]) and _is_number(data[0][1]) and _is_number(data[0][2]):
-        name_idx, x_idx, y_idx, z_idx = 0, 1, 2, 3
-
-    points: List[PointResult] = []
-    for i, row in enumerate(data, start=1):
+    rows=_read_rows(path,encoding)
+    if not rows:return []
+    headers=rows[0]; has_header=_header_like(headers); data=rows[1:] if has_header else rows
+    if not data:return []
+    xidx=_find_col(headers,("easting","east","x","x_coord","xcoordinate","longitude","lon"),0 if not has_header else None)
+    yidx=_find_col(headers,("northing","north","y","y_coord","ycoordinate","latitude","lat"),1 if not has_header else None)
+    zidx=_find_col(headers,("elevation","elev","height","z","z_coord","zcoordinate"),2 if not has_header else None)
+    nidx=_find_col(headers,("pointnumber","point_no","pointid","point","name","id","number"),None)
+    if not has_header and len(data[0])>=4 and not _is_number(data[0][0]) and _is_number(data[0][1]) and _is_number(data[0][2]): nidx,xidx,yidx,zidx=0,1,2,3
+    if has_header and (xidx is None or yidx is None):
+        # If the header is generic/duplicated, locate the first two numeric columns from data.
+        width=max(len(r) for r in data); numeric=[]
+        for c in range(width):
+            vals=[r[c] for r in data[:30] if len(r)>c and str(r[c]).strip()]
+            if vals and sum(_is_number(v) for v in vals)>=max(1,int(len(vals)*0.8)): numeric.append(c)
+        if len(numeric)>=2:xidx,yidx=numeric[:2]; zidx=numeric[2] if len(numeric)>=3 else None
+    points=[]
+    for i,row in enumerate(data,1):
         try:
-            if x_idx is None or y_idx is None or len(row) <= max(x_idx, y_idx):
-                raise ValueError
-            x = float(row[x_idx]); y = float(row[y_idx])
-            z = float(row[z_idx]) if z_idx is not None and len(row) > z_idx and row[z_idx] != "" else None
-        except (ValueError, TypeError):
-            points.append(PointResult(f"PT-{i}", None, None, None, status="FAILED", message="Invalid or missing X/Y"))
-            continue
-        name = row[name_idx].strip() if name_idx is not None and len(row) > name_idx and row[name_idx].strip() else f"PT-{i}"
-        points.append(PointResult(name, x, y, z))
+            if xidx is None or yidx is None or len(row)<=max(xidx,yidx):raise ValueError
+            x=float(row[xidx]); y=float(row[yidx]); z=float(row[zidx]) if zidx is not None and len(row)>zidx and str(row[zidx]).strip() else None
+        except (ValueError,TypeError):points.append(PointResult(f"PT-{i}",None,None,None,status="FAILED",message="Invalid or missing X/Y"));continue
+        name=str(row[nidx]).strip() if nidx is not None and len(row)>nidx and str(row[nidx]).strip() else f"PT-{i}"
+        points.append(PointResult(name,x,y,z))
     return points
