@@ -3,7 +3,7 @@ import csv
 from datetime import datetime
 from pathlib import Path
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFileDialog,QTableWidget,QTableWidgetItem,QProgressBar,QSplitter,QMessageBox,QGroupBox,QComboBox
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFileDialog,QTableWidget,QTableWidgetItem,QProgressBar,QSplitter,QMessageBox,QGroupBox
 from core.crs.engine import CRSEngine
 from core.models import PointResult
 from core.parsers import csv_parser,xlsx_parser,kml_parser,txt_parser
@@ -25,8 +25,7 @@ class ConverterPage(QWidget):
         root=QVBoxLayout(self); root.setContentsMargins(30,20,30,20); title=QLabel(tr("CRS Converter")); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
         self.workspace_bar=WorkspaceFileBar(); self.workspace_bar.file_selected.connect(self._load_path); root.addWidget(self.workspace_bar)
         file_row=QHBoxLayout(); self.choose_btn=QPushButton(tr("SOURCE FILE")); self.choose_btn.clicked.connect(self._choose_file); file_row.addWidget(self.choose_btn); self.file_label=QLabel("No file selected"); self.file_label.setStyleSheet("color:#777;"); file_row.addWidget(self.file_label); file_row.addStretch(); root.addLayout(file_row)
-        splitter=QSplitter(Qt.Horizontal); self.source_picker=CRSPicker(self.engine,tr("SOURCE CRS")); self.target_picker=CRSPicker(self.engine,tr("TARGET CRS")); self.source_picker.crs_selected.connect(lambda *_: self._refresh_operations()); self.target_picker.crs_selected.connect(lambda *_: self._refresh_operations()); splitter.addWidget(self.source_picker); splitter.addWidget(self.target_picker); root.addWidget(splitter)
-        op_row=QHBoxLayout(); op_row.addWidget(QLabel("TRANSFORMATION")); self.operation_picker=QComboBox(); op_row.addWidget(self.operation_picker,1); root.addLayout(op_row); self.operation_info=QLabel("Operation: Automatic — PROJ best available"); self.operation_info.setStyleSheet("color:#666;"); root.addWidget(self.operation_info)
+        splitter=QSplitter(Qt.Horizontal); self.source_picker=CRSPicker(self.engine,tr("SOURCE CRS")); self.target_picker=CRSPicker(self.engine,tr("TARGET CRS")); splitter.addWidget(self.source_picker); splitter.addWidget(self.target_picker); root.addWidget(splitter)
         convert_row=QHBoxLayout(); self.convert_btn=QPushButton(tr("CONVERT")); self.convert_btn.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:8px 24px;"); self.convert_btn.clicked.connect(self._run_conversion); convert_row.addWidget(self.convert_btn); convert_row.addStretch(); root.addLayout(convert_row)
         self.progress=QProgressBar(); root.addWidget(self.progress); summary_box=QGroupBox(); summary_layout=QHBoxLayout(summary_box); self.total_label=QLabel(f"{tr('Total Points')}: 0"); self.success_label=QLabel(f"{tr('Successful')}: 0"); self.failed_label=QLabel(f"{tr('Failed')}: 0"); self.warning_label=QLabel(f"{tr('Warnings')}: 0"); [summary_layout.addWidget(x) for x in (self.total_label,self.success_label,self.failed_label,self.warning_label)]; root.addWidget(summary_box)
         self.results_table=QTableWidget(0,9); self.results_table.setHorizontalHeaderLabels(["Name","Src X","Src Y","Src Z","Tgt X","Tgt Y","Tgt Z","Status","Message"]); root.addWidget(self.results_table)
@@ -56,25 +55,16 @@ class ConverterPage(QWidget):
         except Exception as exc: QMessageBox.critical(self,"Import Error",str(exc)); return
         self.source_points=points; self.result_points=[]; self.current_file=path; self.file_label.setText(f"{Path(path).name} — {len(points)} points loaded")
         if suffix in {".kml",".kmz"}: self.source_picker.set_selected("EPSG:4326","WGS 84 — Geographic 2D (Latitude / Longitude)")
-        [x.setEnabled(False) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn,self.export_txt_btn)]; self._refresh_operations()
-    def _refresh_operations(self):
-        src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
-        if not src or not tgt:return
-        try: operations=self.engine.get_operations(src,tgt)
-        except Exception as exc: self.operation_picker.clear(); self.operation_picker.addItem("Automatic — PROJ best available","auto"); self.operation_info.setText(f"Operation lookup unavailable: {exc}"); return
-        self.operation_picker.clear(); self.operation_picker.addItem("Automatic — PROJ best available","auto")
-        for op in operations:
-            accuracy="unknown" if op["accuracy"] is None or op["accuracy"]<0 else f"{op['accuracy']:.3g} m"; self.operation_picker.addItem(f"{op['description']} — accuracy {accuracy}",str(op["id"]))
-        self.operation_picker.setCurrentIndex(0); self.operation_info.setText("Operation: Automatic — PROJ best available. Choose an explicit operation when the authority/client specification requires it.")
+        [x.setEnabled(False) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn,self.export_txt_btn)]
     def _run_conversion(self)->None:
         if not self.source_points: QMessageBox.warning(self,"No data","Please choose a source file first."); return
-        src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg(); operation=self.operation_picker.currentData() or "auto"
+        src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
         if not src or not tgt: QMessageBox.warning(self,"No CRS","Please select both a source and target CRS."); return
-        try:selected_operation=self.engine.get_selected_operation(src,tgt,operation)
+        try:selected_operation=self.engine.get_selected_operation(src,tgt,"auto")
         except Exception as exc: QMessageBox.critical(self,"Transformation Error",str(exc)); return
         report=validate_points(self.source_points); zone_warnings=validate_zone_consistency(src,tgt); self.progress.setMaximum(len(self.source_points)); self.result_points=[]
-        for i,p in enumerate(self.source_points,1): self.result_points.append(self.engine.transform_points(src,tgt,[p],operation)[0]); self.progress.setValue(i)
-        self._populate_results(); [x.setEnabled(bool(self.result_points)) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn,self.export_txt_btn)]; accuracy=selected_operation.get("accuracy"); accuracy_text="unknown" if accuracy is None or accuracy<0 else f"{accuracy:.3g} m"; self.operation_info.setText(f"Operation: {selected_operation['description']} | Published/PROJ accuracy: {accuracy_text}")
+        for i,p in enumerate(self.source_points,1): self.result_points.append(self.engine.transform_points(src,tgt,[p],"auto")[0]); self.progress.setValue(i)
+        self._populate_results(); [x.setEnabled(bool(self.result_points)) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn,self.export_txt_btn)]; accuracy=selected_operation.get("accuracy"); accuracy_text="unknown" if accuracy is None or accuracy<0 else f"{accuracy:.3g} m"
         append_history({"time":datetime.now().astimezone().isoformat(timespec="seconds"),"file":Path(self.current_file).name if self.current_file else "","source_crs":src,"target_crs":tgt,"points":len(self.result_points),"operation":selected_operation["description"],"status":"SUCCESS"})
         if zone_warnings or report.warnings: QMessageBox.information(self,"Warnings","\n".join(zone_warnings+[w.message for w in report.warnings]))
     def _fmt(self,value): return "" if value is None else (f"{value:.{current_precision()}f}" if isinstance(value,(int,float)) else str(value))
@@ -116,5 +106,5 @@ class ConverterPage(QWidget):
         if not self._require_results():return
         path,_=QFileDialog.getSaveFileName(self,"Export Survey TXT","Project_Export.txt","Text files (*.txt)");
         if not path:return
-        try:export_txt(self.result_points,path,current_precision());QMessageBox.information(self,"Exported",f"TXT created successfully:\n{path}")
+        try:export_txt(self.result_points,path,current_precision());QMessageBox.information(self,"Export Complete",f"TXT created successfully:\n{path}")
         except Exception as exc:QMessageBox.critical(self,"TXT Export Error",str(exc))
