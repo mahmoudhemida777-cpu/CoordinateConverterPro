@@ -7,6 +7,7 @@ from core.crs.engine import CRSEngine
 from core.models import PointResult
 from core.parsers import csv_parser,xlsx_parser,kml_parser,txt_parser
 from core.exporters.dxf_exporter import export_dxf,LabelMode
+from core.point_ordering import order_points
 from ui.i18n import tr
 from ui.widgets.crs_picker import CRSPicker
 from ui.widgets.workspace_bar import WorkspaceFileBar
@@ -39,6 +40,10 @@ class CadPage(QWidget):
 
         axis_box=QGroupBox("AXIS ORDER — IMPORTANT"); axis_box.setStyleSheet("QGroupBox{font-weight:bold;color:#8A5A00;border:1px solid #D8C58A;border-radius:7px;padding:8px;margin-top:2px;} QRadioButton{font-weight:normal;color:#333;padding:3px;}"); af=QHBoxLayout(axis_box); af.setContentsMargins(10,6,10,6); af.setSpacing(20)
         self.axis_xy=QRadioButton("Easting (X) → Northing (Y) — CAD standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X) — SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); af.addStretch(); parsing_layout.addWidget(axis_box)
+
+        ordering_box=QGroupBox("GRID / ZIGZAG POINT NUMBERING"); ordering_box.setStyleSheet("QGroupBox{font-weight:bold;color:#1F3864;border:1px solid #C9D2DE;border-radius:7px;padding:8px;margin-top:2px;} QLabel{font-weight:normal;color:#333;} QComboBox{min-height:30px;}"); of=QHBoxLayout(ordering_box); of.setContentsMargins(10,6,10,6); of.setSpacing(12)
+        of.addWidget(QLabel("Numbering / Ordering")); self.ordering_mode=QComboBox(); self.ordering_mode.addItem("Grid Zigzag — Start West (W → E)","GRID_ZIGZAG_WEST"); self.ordering_mode.addItem("Grid Zigzag — Start East (E → W)","GRID_ZIGZAG_EAST"); self.ordering_mode.addItem("Keep Source Order","SOURCE"); of.addWidget(self.ordering_mode,1); of.addWidget(QLabel("First row starts from the selected side; each next row reverses direction.")); parsing_layout.addWidget(ordering_box)
+
         action_box=QHBoxLayout(); action_box.setSpacing(8); preview=QPushButton("Preview"); apply_all=QPushButton("Apply to All"); reset=QPushButton("Reset");
         for button in (preview,apply_all,reset): button.setMinimumHeight(32)
         preview.clicked.connect(self._apply_parsing_options); apply_all.clicked.connect(self._apply_parsing_options); reset.clicked.connect(self._reset_parsing_options); action_box.addWidget(preview); action_box.addWidget(apply_all); action_box.addWidget(reset); action_box.addStretch(); parsing_layout.addLayout(action_box); root.addWidget(parsing)
@@ -129,7 +134,7 @@ class CadPage(QWidget):
         except Exception as exc:QMessageBox.critical(self,"Parsing Error",str(exc))
 
     def _reset_parsing_options(self)->None:
-        self.parsing_engine.setCurrentIndex(0); self.axis_xy.setChecked(True); self.axis_yx.setChecked(False); self._axis_swapped=False
+        self.parsing_engine.setCurrentIndex(0); self.axis_xy.setChecked(True); self.axis_yx.setChecked(False); self._axis_swapped=False; self.ordering_mode.setCurrentIndex(0)
         if self.current_file:self._load_path(self.current_file)
 
     def _load_path(self,path:str)->None:
@@ -189,6 +194,8 @@ class CadPage(QWidget):
         for i,p in enumerate(pts):
             x=p.tgt_x if p.tgt_x is not None else p.src_x; y=p.tgt_y if p.tgt_y is not None else p.src_y; z=p.tgt_z if p.tgt_z is not None else p.src_z
             for j,value in enumerate([p.name,x,y,z,p.status,p.message]):self.table.setItem(i,j,QTableWidgetItem(fmt(value)))
+    def _selected_order_mode(self)->str:
+        return str(self.ordering_mode.currentData() or "GRID_ZIGZAG_WEST")
     def _export_dxf(self)->None:
         if self.direct_mode.isChecked() and self.source_points:
             valid=[p for p in self.source_points if p.src_x is not None and p.src_y is not None];export_points=[PointResult(p.name,p.src_x,p.src_y,p.src_z,p.src_x,p.src_y,p.src_z,status="SUCCESS",message="DIRECT — no CRS conversion") for p in valid]
@@ -197,7 +204,7 @@ class CadPage(QWidget):
         if not export_points:QMessageBox.warning(self,"Nothing to export","There are no validated coordinates to export.");return
         path,_=QFileDialog.getSaveFileName(self,"Export DXF","CAD_Points.dxf","AutoCAD DXF (*.dxf)")
         if not path:return
-        try:export_dxf(export_points,path,label_mode=LabelMode.NAME,text_height=1.0,use_target_coords=True);QMessageBox.information(self,"DXF Exported",f"DXF created successfully:\n{path}")
+        try:export_dxf(export_points,path,label_mode=LabelMode.NAME,text_height=1.0,use_target_coords=True,order_mode=self._selected_order_mode());QMessageBox.information(self,"DXF Exported",f"DXF created successfully:\n{path}")
         except Exception as exc:QMessageBox.critical(self,"DXF Export Error",str(exc))
     def _export_civil3d_csv(self)->None:
         if self.direct_mode.isChecked() and self.source_points:
@@ -208,9 +215,10 @@ class CadPage(QWidget):
         path,_=QFileDialog.getSaveFileName(self,"Export Civil 3D CSV","Civil3D_Points.csv","CSV (*.csv)")
         if not path:return
         try:
-            precision=current_precision()
+            precision=current_precision(); ordered=order_points([PointResult(name,x,y,z,x,y,z,status="SUCCESS") for x,y,z,name in rows],mode=self._selected_order_mode())
             with open(path,"w",newline="",encoding="utf-8-sig") as f:
                 writer=csv.writer(f);writer.writerow(["Point Number","Easting","Northing","Elevation","Description"])
-                for i,(x,y,z,name) in enumerate(rows,1):writer.writerow([i,f"{x:.{precision}f}",f"{y:.{precision}f}",f"{(z or 0):.{precision}f}",name])
+                for item in ordered:
+                    p=item.point; x=p.tgt_x if p.tgt_x is not None else p.src_x; y=p.tgt_y if p.tgt_y is not None else p.src_y; z=p.tgt_z if p.tgt_z is not None else p.src_z; writer.writerow([item.number,f"{x:.{precision}f}",f"{y:.{precision}f}",f"{(z or 0):.{precision}f}",p.name])
             QMessageBox.information(self,"Civil 3D CSV Exported",f"Civil 3D point file created:\n{path}")
         except Exception as exc:QMessageBox.critical(self,"CSV Export Error",str(exc))
