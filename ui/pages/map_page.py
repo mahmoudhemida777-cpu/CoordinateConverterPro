@@ -4,7 +4,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QPen
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, QGraphicsView, QGraphicsScene, QMessageBox
 from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
-from ui.pages.import_page import ColumnMappingDialog
 from ui.widgets.workspace_bar import WorkspaceFileBar
 
 SUPPORTED_FILTER = "Supported files (*.csv *.xlsx *.kml *.kmz *.txt);;All files (*.*)"
@@ -46,20 +45,23 @@ class MapPage(QWidget):
     def _load_path(self, path: str) -> None:
         try:
             file_path = Path(path); suffix = file_path.suffix.casefold()
-            if suffix == ".kmz": points = kml_parser.parse_kmz_file(path)
-            elif suffix == ".kml": points = kml_parser.parse_kml_file(path)
-            elif suffix == ".txt": points = txt_parser.parse_txt(path)
+            if suffix == ".kmz":
+                points = kml_parser.parse_kmz_file(path)
+            elif suffix == ".kml":
+                points = kml_parser.parse_kml_file(path)
+            elif suffix == ".txt":
+                points = txt_parser.parse_txt(path)
             elif suffix == ".csv":
-                dlg = ColumnMappingDialog(csv_parser.sniff_columns(path), self)
-                if dlg.exec() != dlg.Accepted: return
-                points = csv_parser.parse_csv(path, csv_parser.ColumnMapping(**dlg.result_mapping()))
+                # Map must use the same non-interactive smart parser as Import/CAD.
+                points = csv_parser.parse_csv_auto(path)
             elif suffix == ".xlsx":
-                dlg = ColumnMappingDialog(xlsx_parser.sniff_columns(path), self)
-                if dlg.exec() != dlg.Accepted: return
-                points = xlsx_parser.parse_xlsx(path, xlsx_parser.ColumnMapping(**dlg.result_mapping()))
-            else: raise ValueError(f"Unsupported file type: {suffix}")
+                # Map must use the same non-interactive smart parser as Import/CAD.
+                points = xlsx_parser.parse_xlsx_auto(path)
+            else:
+                raise ValueError(f"Unsupported file type: {suffix}")
             valid = [(p.name, p.src_x, p.src_y) for p in points if p.src_x is not None and p.src_y is not None]
-            if not valid: raise ValueError("No valid X/Y points found in this file")
+            if not valid:
+                raise ValueError("No valid X/Y points found in this file. The automatic parser could not identify usable X/Y coordinates.")
             self.current_file = file_path.resolve(); self._draw(valid); self.info.setText(f"{file_path.name} | {len(valid)} points | X/Y loaded successfully")
         except Exception as exc:
             self.scene.clear(); self.info.setText(f"Load failed: {Path(path).name}"); QMessageBox.critical(self, "Map Error", f"Could not load {Path(path).name}:\n{exc}")
