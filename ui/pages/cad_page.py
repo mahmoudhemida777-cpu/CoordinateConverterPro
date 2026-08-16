@@ -2,7 +2,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 import openpyxl
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFileDialog,QTableWidget,QTableWidgetItem,QProgressBar,QMessageBox,QGroupBox,QCheckBox,QComboBox,QRadioButton,QFormLayout
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFileDialog,QTableWidget,QTableWidgetItem,QProgressBar,QMessageBox,QGroupBox,QCheckBox,QComboBox,QRadioButton,QFormLayout,QScrollArea,QGridLayout,QHeaderView,QSizePolicy
 from core.crs.engine import CRSEngine
 from core.models import PointResult
 from core.parsers import csv_parser,xlsx_parser,kml_parser,txt_parser
@@ -17,31 +17,38 @@ COORDINATE_FILTER="Coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;KMZ/KML (*
 class CadPage(QWidget):
     def __init__(self)->None:
         super().__init__(); self.engine=CRSEngine(); self.source_points=[]; self.result_points=[]; self.current_file=None; self.batch_converted=False; self.workspace_folder=None; self._detected_columns=[]; self._axis_swapped=False
-        root=QVBoxLayout(self); root.setContentsMargins(30,20,30,20)
-        title=QLabel("AutoCAD / Civil 3D Export"); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
-        root.addWidget(QLabel("Load ordinary survey points and export them directly to CAD, or convert between CRS before export."))
+        outer=QVBoxLayout(self); outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
+        scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QScrollArea.Shape.NoFrame); outer.addWidget(scroll)
+        content=QWidget(); root=QVBoxLayout(content); root.setContentsMargins(26,18,26,26); root.setSpacing(12); scroll.setWidget(content)
+        title=QLabel("AutoCAD / Civil 3D Export"); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;margin-bottom:2px;"); root.addWidget(title)
+        subtitle=QLabel("Load ordinary survey points and export them directly to CAD, or convert between CRS before export."); subtitle.setWordWrap(True); subtitle.setStyleSheet("color:#555;"); root.addWidget(subtitle)
         self.workspace_bar=WorkspaceFileBar(); self.workspace_bar.file_selected.connect(self._load_path); root.addWidget(self.workspace_bar)
-        row=QHBoxLayout(); choose=QPushButton("Choose Coordinate File"); choose.clicked.connect(self._choose_file); row.addWidget(choose); self.file_label=QLabel("No file selected"); self.file_label.setStyleSheet("color:#777;"); row.addWidget(self.file_label); row.addStretch(); root.addLayout(row)
+        row=QHBoxLayout(); row.setSpacing(10); choose=QPushButton("Choose Coordinate File"); choose.setMinimumHeight(34); choose.clicked.connect(self._choose_file); row.addWidget(choose,0); self.file_label=QLabel("No file selected"); self.file_label.setStyleSheet("color:#777;"); self.file_label.setWordWrap(True); row.addWidget(self.file_label,1); root.addLayout(row)
         self.direct_mode=QCheckBox("DIRECT CAD EXPORT — use the loaded coordinates exactly as they are (NO CRS conversion)"); self.direct_mode.setChecked(False); self.direct_mode.stateChanged.connect(self._mode_changed); root.addWidget(self.direct_mode)
 
-        # Smart file parsing and axis-order controls. These are intentionally visible in CAD because
-        # survey files sometimes use X/Y labels inconsistently even when the numeric ranges reveal the axes.
-        parsing=QGroupBox("FILE PARSING OPTIONS"); parsing.setStyleSheet("QGroupBox{font-weight:bold;color:#1F3864;} QLabel{font-weight:normal;color:#333;}"); pf=QFormLayout(parsing)
-        self.parsing_engine=QComboBox(); self.parsing_engine.addItems(["Smart (Recommended)","Manual / Selected Columns"]); pf.addRow("Parsing Engine",self.parsing_engine)
-        self.detected_format=QComboBox(); self.detected_format.setEnabled(False); pf.addRow("Detected Format",self.detected_format)
+        parsing=QGroupBox("FILE PARSING OPTIONS"); parsing.setStyleSheet("QGroupBox{font-weight:bold;color:#1F3864;border:1px solid #C9D2DE;border-radius:8px;margin-top:8px;padding:12px;} QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 5px;background:white;} QLabel{font-weight:normal;color:#333;}"); parsing_layout=QVBoxLayout(parsing); parsing_layout.setSpacing(10)
+        top_grid=QGridLayout(); top_grid.setHorizontalSpacing(12); top_grid.setVerticalSpacing(8)
+        self.parsing_engine=QComboBox(); self.parsing_engine.addItems(["Smart (Recommended)","Manual / Selected Columns"]); self.parsing_engine.setMinimumHeight(30)
+        self.detected_format=QComboBox(); self.detected_format.setEnabled(False); self.detected_format.setMinimumHeight(30)
+        top_grid.addWidget(QLabel("Parsing Engine"),0,0); top_grid.addWidget(self.parsing_engine,0,1); top_grid.addWidget(QLabel("Detected Format"),0,2); top_grid.addWidget(self.detected_format,0,3)
         self.x_column=QComboBox(); self.y_column=QComboBox(); self.z_column=QComboBox(); self.name_column=QComboBox()
-        pf.addRow("Easting / X",self.x_column); pf.addRow("Northing / Y",self.y_column); pf.addRow("Elevation / Z (Optional)",self.z_column); pf.addRow("Point Name / Code (Optional)",self.name_column)
-        axis_box=QGroupBox("AXIS ORDER (IMPORTANT)"); af=QVBoxLayout(axis_box)
-        self.axis_xy=QRadioButton("Easting (X) then Northing (Y) — CAD standard"); self.axis_yx=QRadioButton("Northing (Y) then Easting (X) — swap values"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx)
-        pf.addRow(axis_box)
-        btns=QHBoxLayout(); preview=QPushButton("Preview"); preview.clicked.connect(self._apply_parsing_options); apply_all=QPushButton("Apply to All"); apply_all.clicked.connect(self._apply_parsing_options); reset=QPushButton("Reset"); reset.clicked.connect(self._reset_parsing_options); btns.addWidget(preview); btns.addWidget(apply_all); btns.addWidget(reset); pf.addRow(btns); root.addWidget(parsing)
+        for combo in (self.x_column,self.y_column,self.z_column,self.name_column): combo.setMinimumHeight(30); combo.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
+        top_grid.addWidget(QLabel("Easting / X"),1,0); top_grid.addWidget(self.x_column,1,1); top_grid.addWidget(QLabel("Northing / Y"),1,2); top_grid.addWidget(self.y_column,1,3)
+        top_grid.addWidget(QLabel("Elevation / Z"),2,0); top_grid.addWidget(self.z_column,2,1); top_grid.addWidget(QLabel("Point Name / Code"),2,2); top_grid.addWidget(self.name_column,2,3)
+        top_grid.setColumnStretch(1,1); top_grid.setColumnStretch(3,1); parsing_layout.addLayout(top_grid)
 
-        crs_row=QHBoxLayout(); self.source_picker=CRSPicker(self.engine,tr("SOURCE CRS")); self.target_picker=CRSPicker(self.engine,tr("TARGET CRS")); crs_row.addWidget(self.source_picker); crs_row.addWidget(self.target_picker); root.addLayout(crs_row)
-        convert=QPushButton("CONVERT FOR CAD / CIVIL 3D"); convert.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:9px 24px;"); convert.clicked.connect(self._convert); root.addWidget(convert)
-        self.progress=QProgressBar(); root.addWidget(self.progress)
-        summary=QGroupBox(); sl=QHBoxLayout(summary); self.total=QLabel("Points: 0"); self.success=QLabel("Success: 0"); self.failed=QLabel("Failed: 0"); [sl.addWidget(w) for w in (self.total,self.success,self.failed)]; root.addWidget(summary)
-        self.table=QTableWidget(0,6); self.table.setHorizontalHeaderLabels(["Point","Easting / X","Northing / Y","Elevation","Status","Message"]); root.addWidget(self.table)
-        export_row=QHBoxLayout(); dxf=QPushButton("EXPORT DXF — AutoCAD / Civil 3D"); dxf.clicked.connect(self._export_dxf); export_row.addWidget(dxf); civil=QPushButton("EXPORT CSV — Civil 3D Points"); civil.clicked.connect(self._export_civil3d_csv); export_row.addWidget(civil); root.addLayout(export_row)
+        axis_box=QGroupBox("AXIS ORDER — IMPORTANT"); axis_box.setStyleSheet("QGroupBox{font-weight:bold;color:#8A5A00;border:1px solid #D8C58A;border-radius:7px;padding:8px;margin-top:2px;} QRadioButton{font-weight:normal;color:#333;padding:3px;}"); af=QHBoxLayout(axis_box); af.setContentsMargins(10,6,10,6); af.setSpacing(20)
+        self.axis_xy=QRadioButton("Easting (X) → Northing (Y) — CAD standard"); self.axis_yx=QRadioButton("Northing (Y) → Easting (X) — SWAP"); self.axis_xy.setChecked(True); af.addWidget(self.axis_xy); af.addWidget(self.axis_yx); af.addStretch(); parsing_layout.addWidget(axis_box)
+        action_box=QHBoxLayout(); action_box.setSpacing(8); preview=QPushButton("Preview"); apply_all=QPushButton("Apply to All"); reset=QPushButton("Reset");
+        for button in (preview,apply_all,reset): button.setMinimumHeight(32)
+        preview.clicked.connect(self._apply_parsing_options); apply_all.clicked.connect(self._apply_parsing_options); reset.clicked.connect(self._reset_parsing_options); action_box.addWidget(preview); action_box.addWidget(apply_all); action_box.addWidget(reset); action_box.addStretch(); parsing_layout.addLayout(action_box); root.addWidget(parsing)
+
+        crs_group=QGroupBox("COORDINATE REFERENCE SYSTEM"); crs_group.setStyleSheet("QGroupBox{font-weight:bold;color:#1F3864;border:1px solid #C9D2DE;border-radius:8px;margin-top:8px;padding:10px;} QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 5px;background:white;}"); crs_row=QHBoxLayout(crs_group); crs_row.setSpacing(12); self.source_picker=CRSPicker(self.engine,tr("SOURCE CRS")); self.target_picker=CRSPicker(self.engine,tr("TARGET CRS")); crs_row.addWidget(self.source_picker,1); crs_row.addWidget(self.target_picker,1); root.addWidget(crs_group)
+        convert=QPushButton("CONVERT FOR CAD / CIVIL 3D"); convert.setMinimumHeight(40); convert.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:9px 24px;border-radius:5px;"); convert.clicked.connect(self._convert); root.addWidget(convert)
+        self.progress=QProgressBar(); self.progress.setMinimumHeight(20); root.addWidget(self.progress)
+        summary=QGroupBox(); sl=QHBoxLayout(summary); sl.setContentsMargins(10,7,10,7); self.total=QLabel("Points: 0"); self.success=QLabel("Success: 0"); self.failed=QLabel("Failed: 0"); [sl.addWidget(w) for w in (self.total,self.success,self.failed)]; sl.addStretch(); root.addWidget(summary)
+        self.table=QTableWidget(0,6); self.table.setHorizontalHeaderLabels(["Point","Easting / X","Northing / Y","Elevation","Status","Message"]); self.table.setMinimumHeight(240); self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.ResizeToContents); self.table.horizontalHeader().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents); self.table.horizontalHeader().setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents); self.table.horizontalHeader().setSectionResizeMode(3,QHeaderView.ResizeMode.ResizeToContents); self.table.horizontalHeader().setSectionResizeMode(4,QHeaderView.ResizeMode.ResizeToContents); self.table.horizontalHeader().setSectionResizeMode(5,QHeaderView.ResizeMode.Stretch); self.table.setAlternatingRowColors(True); root.addWidget(self.table)
+        export_row=QHBoxLayout(); export_row.setSpacing(10); dxf=QPushButton("EXPORT DXF — AutoCAD / Civil 3D"); civil=QPushButton("EXPORT CSV — Civil 3D Points"); dxf.setMinimumHeight(38); civil.setMinimumHeight(38); dxf.clicked.connect(self._export_dxf); civil.clicked.connect(self._export_civil3d_csv); export_row.addWidget(dxf,1); export_row.addWidget(civil,1); root.addLayout(export_row)
 
     def set_workspace_folder(self,folder:str): self.workspace_folder=folder; self.workspace_bar.set_folder(folder,self.current_file)
     def load_active_file(self,path:str)->None:
@@ -106,7 +113,6 @@ class CadPage(QWidget):
             elif suffix==".xlsx" and self.parsing_engine.currentIndex()==1:
                 x=self.x_column.currentText(); y=self.y_column.currentText(); z=self.z_column.currentText(); n=self.name_column.currentText(); mapping=xlsx_parser.ColumnMapping(None if n=="<none>" else n,x,y,None if z=="<none>" else z); points=xlsx_parser.parse_xlsx(path,mapping)
             else:
-                # Smart mode reloads through the canonical automatic parser.
                 if suffix==".csv": points=csv_parser.parse_csv_auto(path)
                 elif suffix==".xlsx": points=xlsx_parser.parse_xlsx_auto(path)
                 elif suffix==".txt": points=txt_parser.parse_txt(path)
