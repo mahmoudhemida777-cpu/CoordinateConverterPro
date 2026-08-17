@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QScrollArea
 from core.crs.engine import CRSEngine
 from core.models import PointResult
 from ui.main_window import MainWindow
+from ui.cad_layout_fix import apply_cad_page_layout
 
 
 @pytest.fixture(scope="session")
@@ -143,7 +144,6 @@ def test_cad_preview_applies_axis_order_change(qapp, tmp_path):
         cad.axis_yx.setChecked(True)
         assert cad._preview_dirty is True
 
-        # The table remains unchanged until the explicit PREVIEW action.
         assert cad.table.item(row, 2).text() == "100.000"
         assert cad.table.item(row, 3).text() == "200.000"
 
@@ -152,6 +152,19 @@ def test_cad_preview_applies_axis_order_change(qapp, tmp_path):
         assert cad.table.item(row, 2).text() == "200.000"
         assert cad.table.item(row, 3).text() == "100.000"
         assert cad._preview_dirty is False
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_cad_layout_provides_dxf_label_compatibility(qapp):
+    window = MainWindow()
+    try:
+        cad = window.pages["cad"]
+        assert not hasattr(cad, "write_code")
+        assert apply_cad_page_layout(window) is True
+        assert hasattr(cad, "write_code")
+        assert cad.write_code.isChecked() is True
     finally:
         window.close()
         window.deleteLater()
