@@ -107,6 +107,7 @@ def main() -> int:
         )
         app.processEvents()
         from ui.main_window import MainWindow
+        from ui.cad_layout_fix import apply_cad_page_layout
 
         splash.showMessage(
             "Preparing CRS engine and workspace...",
@@ -116,6 +117,7 @@ def main() -> int:
         app.processEvents()
         window = MainWindow()
         window.setWindowIcon(app_icon())
+        apply_cad_page_layout(window)
 
         splash.showMessage(
             "Opening MH GeoSuite Pro...",
