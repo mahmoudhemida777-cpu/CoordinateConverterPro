@@ -147,7 +147,10 @@ class SurveyPage(QWidget):
     def _new_input(default: str = "") -> QLineEdit:
         edit = QLineEdit(default)
         edit.setPlaceholderText("Enter numeric value")
-        edit.setMinimumHeight(38)
+        # Use an explicit fixed control height so the global Qt stylesheet cannot
+        # collapse survey fields below the regression-tested touch target.
+        edit.setFixedHeight(42)
+        edit.setMinimumSize(0, 42)
         edit.setMaximumHeight(42)
         edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return edit
