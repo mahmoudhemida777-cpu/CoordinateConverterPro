@@ -28,6 +28,9 @@ class SurveyPage(QWidget):
         content = QWidget()
         content.setObjectName("surveyContent")
         content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        # Explicit page-local stylesheet: the application-wide QLineEdit rule
+        # must not reduce the Survey Tools input touch target below 38 px.
+        content.setStyleSheet("QLineEdit { min-height: 38px; }")
         scroll.setWidget(content)
 
         root = QVBoxLayout(content)
@@ -147,8 +150,6 @@ class SurveyPage(QWidget):
     def _new_input(default: str = "") -> QLineEdit:
         edit = QLineEdit(default)
         edit.setPlaceholderText("Enter numeric value")
-        # Use an explicit fixed control height so the global Qt stylesheet cannot
-        # collapse survey fields below the regression-tested touch target.
         edit.setFixedHeight(42)
         edit.setMinimumSize(0, 42)
         edit.setMaximumHeight(42)
