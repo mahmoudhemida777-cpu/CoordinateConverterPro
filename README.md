@@ -41,6 +41,7 @@ Successful Batch workbooks are emitted as `<name>_converted.xlsx` with `Target X
 - Civil 3D PENZD CSV: Point, Easting, Northing, Elevation, Description.
 - Target coordinates are used for converted results.
 - CAD workbench is focused on parsing, axis/order controls, conversion status, point table and export actions without the visual zigzag preview panel.
+- Zigzag ordering is handled independently for each point-code group; groups are never connected to one another.
 
 ## Testing
 
