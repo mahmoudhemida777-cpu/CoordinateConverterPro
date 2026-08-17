@@ -32,16 +32,10 @@ def _xy(p: PointResult):
 
 
 def point_code_group(value: str | None) -> str:
-    """Return the logical survey-code prefix used for grouped zigzagging.
-
-    Examples: ``A1`` -> ``A``, ``KS159`` -> ``KS``, ``As-12`` -> ``AS``.
-    If no numeric suffix exists, the normalized full value is retained so
-    unrelated descriptive point names are never merged accidentally.
-    """
+    """Return the logical survey-code prefix used for grouped zigzagging."""
     text = str(value or "").strip()
     if not text:
         return "<NO CODE>"
-    # Keep letters before the first numeric sequence as the code prefix.
     match = re.match(r"^\s*([A-Za-z]+(?:[ _-]*[A-Za-z]+)*)\s*[-_ ]*\d+(?:\D.*)?$", text)
     if match:
         return re.sub(r"[_\-\s]+", " ", match.group(1)).strip().upper()
@@ -53,13 +47,37 @@ def _point_group(p: PointResult) -> str:
 
 
 def _cluster_axis(values: List[float], tolerance: float | None = None) -> List[List[int]]:
+    """Cluster nearly-equal coordinates into physical grid rows.
+
+    Auto tolerance is based on nearest-neighbour spacing rather than the
+    median of every gap. This prevents small within-row survey offsets from
+    being mistaken for separate rows.
+    """
     if not values:
         return []
     order = sorted(range(len(values)), key=lambda i: values[i])
     if tolerance is None:
-        diffs = [values[order[i + 1]] - values[order[i]] for i in range(len(order) - 1)]
-        positive = [d for d in diffs if d > 1e-9]
-        tolerance = (sorted(positive)[len(positive) // 2] * 0.25) if positive else 1e-6
+        if len(order) == 1:
+            tolerance = 1e-6
+        else:
+            gaps = [values[order[i + 1]] - values[order[i]] for i in range(len(order) - 1)]
+            positive = [d for d in gaps if d > 1e-9]
+            if not positive:
+                tolerance = 1e-6
+            else:
+                nearest = []
+                for pos, idx in enumerate(order):
+                    candidates = []
+                    if pos > 0:
+                        candidates.append(abs(values[idx] - values[order[pos - 1]]))
+                    if pos + 1 < len(order):
+                        candidates.append(abs(values[order[pos + 1]] - values[idx]))
+                    if candidates:
+                        nearest.append(min(candidates))
+                nearest.sort()
+                nn = nearest[len(nearest) // 2] if nearest else min(positive)
+                largest = max(positive)
+                tolerance = max(1e-6, min(nn * 2.5, largest * 0.40))
     groups = [[order[0]]]
     centers = [values[order[0]]]
     for idx in order[1:]:
@@ -72,21 +90,14 @@ def _cluster_axis(values: List[float], tolerance: float | None = None) -> List[L
     return groups
 
 
-def _order_grid(
-    points: List[PointResult], start_east: bool, tolerance: float | None
-) -> list[tuple[PointResult, int, int]]:
+def _order_grid(points: List[PointResult], start_east: bool, tolerance: float | None) -> list[tuple[PointResult, int, int]]:
     if not points:
         return []
     valid = [p for p in points if _xy(p)[0] is not None and _xy(p)[1] is not None]
     invalid = [p for p in points if _xy(p)[0] is None or _xy(p)[1] is None]
     groups = _cluster_axis([_xy(p)[1] for p in valid], tolerance)
-    # Survey convention: start from the north row. Within each row, alternate
-    # direction so the path remains continuous (true boustrophedon/zigzag).
-    groups = sorted(
-        groups,
-        key=lambda g: sum(_xy(valid[i])[1] for i in g) / len(g),
-        reverse=True,
-    )
+    # North first; alternate direction on every row inside this code group.
+    groups = sorted(groups, key=lambda g: sum(_xy(valid[i])[1] for i in g) / len(g), reverse=True)
     rows = []
     for r, g in enumerate(groups, 1):
         row = [valid[i] for i in g]
@@ -97,40 +108,28 @@ def _order_grid(
     return rows
 
 
-def order_points(
-    points: Iterable[PointResult],
-    mode: str = "SOURCE",
-    tolerance: float | None = None,
-    reverse: bool = False,
-    group_by_name: bool = False,
-) -> List[OrderedPoint]:
+def order_points(points: Iterable[PointResult], mode: str = "SOURCE", tolerance: float | None = None, reverse: bool = False, group_by_name: bool = False) -> List[OrderedPoint]:
     """Order points for sequential/grid exports.
 
-    ``group_by_name=True`` means *point code*, not the complete point label.
-    Thus A1..A60 are one independent grid, KS1..KS20 another, etc. Each group
-    is zigzagged independently and no path is ever drawn between two groups.
+    When grouping is enabled, A1..A60 form one independent grid, KS1..KS20
+    another, etc. No zigzag path is connected across code groups.
     """
     pts = list(points)
     mode = mode.upper()
     ordered = []
-
     if mode == "SOURCE":
         ordered = [(p, 0, 0, _point_group(p)) for p in pts]
     else:
         valid = [p for p in pts if _xy(p)[0] is not None and _xy(p)[1] is not None]
         invalid = [p for p in pts if _xy(p)[0] is None or _xy(p)[1] is None]
         if mode in {"X_ASC", "EAST_WEST"}:
-            base = sorted(valid, key=lambda p: (_xy(p)[0], _xy(p)[1]))
-            ordered = [(p, 0, 0, _point_group(p)) for p in base]
+            ordered = [(p, 0, 0, _point_group(p)) for p in sorted(valid, key=lambda p: (_xy(p)[0], _xy(p)[1]))]
         elif mode in {"X_DESC", "WEST_EAST"}:
-            base = sorted(valid, key=lambda p: (-_xy(p)[0], _xy(p)[1]))
-            ordered = [(p, 0, 0, _point_group(p)) for p in base]
+            ordered = [(p, 0, 0, _point_group(p)) for p in sorted(valid, key=lambda p: (-_xy(p)[0], _xy(p)[1]))]
         elif mode == "Y_ASC":
-            base = sorted(valid, key=lambda p: (_xy(p)[1], _xy(p)[0]))
-            ordered = [(p, 0, 0, _point_group(p)) for p in base]
+            ordered = [(p, 0, 0, _point_group(p)) for p in sorted(valid, key=lambda p: (_xy(p)[1], _xy(p)[0]))]
         elif mode == "Y_DESC":
-            base = sorted(valid, key=lambda p: (-_xy(p)[1], _xy(p)[0]))
-            ordered = [(p, 0, 0, _point_group(p)) for p in base]
+            ordered = [(p, 0, 0, _point_group(p)) for p in sorted(valid, key=lambda p: (-_xy(p)[1], _xy(p)[0]))]
         else:
             start_east = mode in {"GRID_ZIGZAG_EAST", "GRID_ZIGZAG_E"}
             if group_by_name:
@@ -142,7 +141,6 @@ def order_points(
             else:
                 ordered.extend((p, r, c, _point_group(p)) for p, r, c in _order_grid(valid, start_east, tolerance))
                 ordered.extend((p, 0, 0, _point_group(p)) for p in invalid)
-
     if reverse:
         ordered.reverse()
     return [OrderedPoint(p, n, r, c, g) for n, (p, r, c, g) in enumerate(ordered, 1)]
