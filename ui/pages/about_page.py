@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QMessag
 
 from core.version import APP_VERSION
 
-APP_NAME = "MH GeoSuite Pro"
+APP_NAME = "MH - Coordinate"
 TAGLINE = "Professional Surveying & Geospatial Engineering Suite"
 LINKEDIN_URL = "https://www.linkedin.com/in/mahmoud-abdelbasit/en/"
 EMAIL = "mahmoudhemida777@gmail.com"
@@ -70,4 +70,4 @@ class AboutPage(QWidget):
         if update:
             QMessageBox.information(self, "Update Available", f"Version {update[0]} is available. Restart the application to install it automatically.")
         else:
-            QMessageBox.information(self, "MH GeoSuite Pro", "You are using the latest available version.")
+            QMessageBox.information(self, "MH - Coordinate", "You are using the latest available version.")
