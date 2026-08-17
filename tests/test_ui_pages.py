@@ -101,22 +101,32 @@ def _combo_index(combo, text):
     return idx
 
 
+def _table_row_for_name(cad, name):
+    for row in range(cad.table.rowCount()):
+        item = cad.table.item(row, 1)
+        if item and item.text() == name:
+            return row
+    raise AssertionError(f"Point {name!r} was not found in preview table")
+
+
 def test_cad_preview_applies_manual_parsing_changes(qapp, tmp_path):
     window = MainWindow()
     try:
         cad = window.pages["cad"]
         path = _write_preview_csv(tmp_path)
         cad.load_active_file(str(path))
-        assert cad.table.item(0, 2).text() == "100.000"
-        assert cad.table.item(0, 3).text() == "200.000"
+        row = _table_row_for_name(cad, "P1")
+        assert cad.table.item(row, 2).text() == "100.000"
+        assert cad.table.item(row, 3).text() == "200.000"
 
         cad.parsing_engine.setCurrentIndex(1)
         cad.x_column.setCurrentIndex(_combo_index(cad.x_column, "N"))
         cad.y_column.setCurrentIndex(_combo_index(cad.y_column, "E"))
         cad.preview_btn.click()
 
-        assert cad.table.item(0, 2).text() == "200.000"
-        assert cad.table.item(0, 3).text() == "100.000"
+        row = _table_row_for_name(cad, "P1")
+        assert cad.table.item(row, 2).text() == "200.000"
+        assert cad.table.item(row, 3).text() == "100.000"
         assert "Preview updated" in cad.preview_state.text()
     finally:
         window.close()
@@ -129,16 +139,18 @@ def test_cad_preview_applies_axis_order_change(qapp, tmp_path):
         cad = window.pages["cad"]
         path = _write_preview_csv(tmp_path)
         cad.load_active_file(str(path))
+        row = _table_row_for_name(cad, "P1")
         cad.axis_yx.setChecked(True)
         assert cad._preview_dirty is True
 
-        # The table changes only after the explicit PREVIEW action.
-        assert cad.table.item(0, 2).text() == "100.000"
-        assert cad.table.item(0, 3).text() == "200.000"
+        # The table remains unchanged until the explicit PREVIEW action.
+        assert cad.table.item(row, 2).text() == "100.000"
+        assert cad.table.item(row, 3).text() == "200.000"
 
         cad.preview_again_btn.click()
-        assert cad.table.item(0, 2).text() == "200.000"
-        assert cad.table.item(0, 3).text() == "100.000"
+        row = _table_row_for_name(cad, "P1")
+        assert cad.table.item(row, 2).text() == "200.000"
+        assert cad.table.item(row, 3).text() == "100.000"
         assert cad._preview_dirty is False
     finally:
         window.close()
