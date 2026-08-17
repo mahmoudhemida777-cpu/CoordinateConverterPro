@@ -125,7 +125,9 @@ class SurveyPage(QWidget):
         self.area_input = QLineEdit()
         self.area_input.setPlaceholderText("x1,y1; x2,y2; x3,y3; ...")
         self.area_input.setMinimumHeight(38)
-        self.area_input.setMaximumHeight(42)
+        # Do not cap the maximum height: the page-local stylesheet adds
+        # vertical padding to the minimum height, so a 42 px maximum can
+        # become smaller than the effective minimum and fail the layout contract.
         ag.addWidget(self.area_input)
 
         area_row = QHBoxLayout()
