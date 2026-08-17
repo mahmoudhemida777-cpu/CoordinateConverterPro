@@ -12,17 +12,41 @@ from PySide6.QtWidgets import (
 )
 
 
+class _ExportLabelProxy:
+    """Backward-compatible export-label preference for the current CAD UI.
+
+    CadPage's export path expects a ``write_code`` checkbox, while the current
+    production layout intentionally has no separate label toggle. Keep the
+    existing UI unchanged and make the export default explicit: include the
+    point code/name together with the generated point number.
+    """
+
+    def __init__(self, checked: bool = True) -> None:
+        self._checked = checked
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+
 def apply_cad_page_layout(window: QWidget) -> bool:
     """Make the CAD page fully navigable on small/non-maximized windows.
 
     The CAD page already owns its functional controls. This helper only fixes
-    presentation: it moves the existing page layout into an outer scroll area,
-    gives the options pane enough width for its labels/combos, and keeps the
-    preview/export area accessible without changing conversion logic.
+    presentation and a legacy export-control compatibility gap: it moves the
+    existing page layout into an outer scroll area, gives the options pane
+    enough width for its labels/combos, keeps the preview/export area
+    accessible, and provides the explicit default label preference expected by
+    the DXF export handler.
     """
     cad = window.findChild(QWidget, "cadPage")
     if cad is None or cad.property("mh_layout_fixed"):
         return False
+
+    # Compatibility fix: the current CAD page no longer exposes a separate
+    # write-code checkbox, but the DXF handler still reads it. Do not alter the
+    # CAD UI; provide the intended production default programmatically.
+    if not hasattr(cad, "write_code"):
+        cad.write_code = _ExportLabelProxy(checked=True)
 
     root = cad.layout()
     if root is None:
