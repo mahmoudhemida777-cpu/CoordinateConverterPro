@@ -143,10 +143,8 @@ def test_cad_preview_applies_axis_order_change(qapp, tmp_path):
         row = _table_row_for_name(cad, "P1")
         cad.axis_yx.setChecked(True)
         assert cad._preview_dirty is True
-
         assert cad.table.item(row, 2).text() == "100.000"
         assert cad.table.item(row, 3).text() == "200.000"
-
         cad.preview_again_btn.click()
         row = _table_row_for_name(cad, "P1")
         assert cad.table.item(row, 2).text() == "200.000"
@@ -165,6 +163,54 @@ def test_cad_layout_provides_dxf_label_compatibility(qapp):
         assert apply_cad_page_layout(window) is True
         assert hasattr(cad, "write_code")
         assert cad.write_code.isChecked() is True
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_survey_tools_inverse_is_functional(qapp):
+    window = MainWindow()
+    try:
+        survey = window.pages["survey"]
+        survey.x1.setText("100")
+        survey.y1.setText("200")
+        survey.z1.setText("10")
+        survey.x2.setText("130")
+        survey.y2.setText("240")
+        survey.z2.setText("16")
+        survey._calculate()
+        assert survey.result_labels["horizontal"].text() == "50.000"
+        assert survey.result_labels["dx"].text() == "30.000"
+        assert survey.result_labels["dy"].text() == "40.000"
+        assert survey.result_labels["dz"].text() == "6.000"
+        assert survey.result_labels["grade"].text() == "12.000%"
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_survey_tools_polygon_area_is_functional(qapp):
+    window = MainWindow()
+    try:
+        survey = window.pages["survey"]
+        survey.area_input.setText("0,0; 10,0; 10,5; 0,5")
+        survey._area()
+        assert survey.area_result.text() == "Area: 50.000 square units"
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_map_display_controls_are_consistent_and_code_colored(qapp):
+    window = MainWindow()
+    try:
+        map_page = window.pages["map"]
+        assert map_page.point_size.minimum() == 4
+        assert map_page.point_size.maximum() == 18
+        assert map_page.label_size.minimum() == 7
+        assert map_page.label_size.maximum() == 16
+        assert map_page.point_size.suffix() == " px"
+        assert map_page.label_size.suffix() == " pt"
     finally:
         window.close()
         window.deleteLater()
