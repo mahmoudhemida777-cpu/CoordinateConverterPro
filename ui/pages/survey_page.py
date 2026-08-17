@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QGroupBox, QMessageBox, QGridLayout,
@@ -25,8 +26,6 @@ class SurveyPage(QWidget):
         sub.setWordWrap(True)
         root.addWidget(sub)
 
-        # 1 — Two-point input. Keep every control the same width/height so the
-        # page remains visually balanced at different window sizes.
         box = QGroupBox("1  TWO-POINT INVERSE / COGO")
         form = QGridLayout(box)
         form.setContentsMargins(18, 22, 18, 18)
@@ -59,8 +58,6 @@ class SurveyPage(QWidget):
         form.addWidget(calc, 3, 0, 1, 4)
         root.addWidget(box)
 
-        # 2 — Results. Use two columns instead of four; this prevents cramped
-        # values and keeps the page aligned with the rest of the application.
         results = QGroupBox("2  CALCULATION RESULTS")
         rg = QGridLayout(results)
         rg.setContentsMargins(18, 22, 18, 18)
@@ -85,12 +82,11 @@ class SurveyPage(QWidget):
             value = QLabel("—")
             value.setObjectName("surveyResultValue")
             value.setMinimumHeight(34)
-            value.setAlignment(value.alignment() | 0x0001)
+            value.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             rg.addWidget(value, r * 2 + 1, c)
             self.result_labels[key] = value
         root.addWidget(results)
 
-        # 3 — Polygon area. Match the same margins, spacing and control height.
         area_box = QGroupBox("3  POLYGON AREA")
         ag = QVBoxLayout(area_box)
         ag.setContentsMargins(18, 22, 18, 18)
