@@ -8,10 +8,12 @@ GOLD = QColor("#C9A227")
 WHITE = QColor("#FFFFFF")
 LIGHT = QColor("#F4F6F9")
 MUTED = QColor("#6B7280")
+APP_NAME = "MH - Coordinate"
+TAGLINE = "Professional Surveying & Geospatial Engineering Suite"
 
 
 def create_logo_pixmap(size: int = 256) -> QPixmap:
-    """Create the MH GeoSuite Pro brand mark without external image files."""
+    """Create the MH - Coordinate brand mark without external image files."""
     px = QPixmap(size, size)
     px.fill(Qt.GlobalColor.transparent)
     p = QPainter(px)
@@ -44,13 +46,12 @@ def create_splash_pixmap(width: int = 820, height: int = 520) -> QPixmap:
     p.setBrush(NAVY); p.setPen(Qt.PenStyle.NoPen); p.drawRect(0, 0, width, header_h)
     logo_size = 155; p.drawPixmap(int(width / 2 - logo_size / 2), 32, create_logo_pixmap(logo_size))
     p.setPen(WHITE); font = p.font(); font.setPointSize(27); font.setBold(True); p.setFont(font)
-    p.drawText(QRectF(30, 205, width - 60, 45), Qt.AlignmentFlag.AlignCenter, "MH GeoSuite Pro")
+    p.drawText(QRectF(30, 205, width - 60, 45), Qt.AlignmentFlag.AlignCenter, APP_NAME)
     p.setPen(QColor("#DDE6F4")); font = p.font(); font.setPointSize(12); font.setBold(False); p.setFont(font)
-    p.drawText(QRectF(30, 258, width - 60, 32), Qt.AlignmentFlag.AlignCenter, "Professional Surveying & Geospatial Engineering Suite")
+    p.drawText(QRectF(30, 258, width - 60, 32), Qt.AlignmentFlag.AlignCenter, TAGLINE)
     p.setPen(GOLD); font = p.font(); font.setPointSize(10); font.setBold(True); p.setFont(font)
     p.drawText(QRectF(30, 305, width - 60, 22), Qt.AlignmentFlag.AlignCenter, "SURVEY • GIS • CRS • CAD / CIVIL 3D")
 
-    # White status card with enough vertical space for the dynamic QSplashScreen message.
     p.setBrush(WHITE); p.drawRoundedRect(QRectF(28, 365, width - 56, 105), 12, 12)
     p.setPen(NAVY); font = p.font(); font.setPointSize(11); font.setBold(True); p.setFont(font)
     p.drawText(QRectF(52, 382, width - 104, 24), Qt.AlignmentFlag.AlignLeft, "Starting application")
@@ -59,5 +60,5 @@ def create_splash_pixmap(width: int = 820, height: int = 520) -> QPixmap:
     p.setPen(MUTED); font = p.font(); font.setPointSize(9); font.setBold(False); p.setFont(font)
     p.drawText(QRectF(52, 440, width - 104, 20), Qt.AlignmentFlag.AlignLeft, "CRS Engine  •  PROJ  •  CAD / Civil 3D")
     p.setPen(QColor("#8A93A3")); font = p.font(); font.setPointSize(8); font.setBold(False); p.setFont(font)
-    p.drawText(QRectF(30, 488, width - 60, 18), Qt.AlignmentFlag.AlignCenter, "© MH GeoSuite Pro")
+    p.drawText(QRectF(30, 488, width - 60, 18), Qt.AlignmentFlag.AlignCenter, "© MH - Coordinate")
     p.end(); return px
