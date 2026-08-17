@@ -4,7 +4,9 @@ MH GeoSuite Pro — application entry point.
 from __future__ import annotations
 
 import logging
+import math
 import sys
+import tempfile
 from pathlib import Path
 
 LOG_DIR = Path(__file__).resolve().parent / "logs"
@@ -22,15 +24,48 @@ logger = logging.getLogger("MHGeoSuitePro")
 
 
 def _smoke_test() -> int:
-    """Validate critical frozen imports before starting the GUI."""
+    """Run lightweight but real functional checks inside the frozen EXE."""
     import numpy  # noqa: F401
-    import ezdxf  # noqa: F401
+    import ezdxf
     import pandas  # noqa: F401
     import pyproj  # noqa: F401
     import openpyxl  # noqa: F401
     from ui.main_window import MainWindow  # noqa: F401
     from ui.branding import app_icon, create_splash_pixmap  # noqa: F401
     from core.updater import check_for_update  # noqa: F401
+    from core.crs.engine import CRSEngine
+    from core.models import PointResult
+    from core.exporters.dxf_exporter import export_dxf
+
+    engine = CRSEngine()
+    source = PointResult("SMOKE-1", 46.6753, 24.7136, 600.0)
+    converted = engine.transform_points("EPSG:4326", "EPSG:32638", [source])
+    if not converted or converted[0].status != "SUCCESS":
+        raise RuntimeError(f"Frozen CRS conversion failed: {converted[0].message if converted else 'no result'}")
+    result = converted[0]
+    if result.tgt_x is None or result.tgt_y is None:
+        raise RuntimeError("Frozen CRS conversion returned empty projected coordinates")
+
+    back = engine.transform_points(
+        "EPSG:32638",
+        "EPSG:4326",
+        [PointResult("SMOKE-1", result.tgt_x, result.tgt_y, result.tgt_z)],
+    )
+    if not back or back[0].status != "SUCCESS":
+        raise RuntimeError(f"Frozen inverse CRS conversion failed: {back[0].message if back else 'no result'}")
+    if not math.isclose(back[0].tgt_x, source.src_x, abs_tol=1e-6):
+        raise RuntimeError("Frozen longitude round-trip exceeded tolerance")
+    if not math.isclose(back[0].tgt_y, source.src_y, abs_tol=1e-6):
+        raise RuntimeError("Frozen latitude round-trip exceeded tolerance")
+
+    with tempfile.TemporaryDirectory(prefix="mh_geosuite_smoke_") as tmp:
+        dxf_path = Path(tmp) / "smoke.dxf"
+        export_dxf(converted, str(dxf_path))
+        if not dxf_path.is_file() or dxf_path.stat().st_size <= 0:
+            raise RuntimeError("Frozen DXF export did not create a valid file")
+        ezdxf.readfile(dxf_path)
+
+    logger.info("Frozen functional smoke test passed: imports + CRS round-trip + DXF export")
     return 0
 
 
