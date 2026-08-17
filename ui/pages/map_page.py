@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from PySide6.QtCore import Qt
+
+from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QBrush, QPen, QColor, QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
     QGraphicsView, QGraphicsScene, QMessageBox, QGraphicsTextItem,
-    QComboBox, QCheckBox, QSpinBox, QGroupBox, QFormLayout,
+    QComboBox, QCheckBox, QSpinBox, QGroupBox,
 )
+
 from core.models import PointResult
 from core.point_ordering import order_points
 from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
@@ -22,13 +24,14 @@ GROUP_COLORS = [
 
 
 class MapPage(QWidget):
-    """Professional survey map with independent, color-coded code-group paths."""
+    """Survey map with full-viewport extents and independent code colors."""
 
     def __init__(self) -> None:
         super().__init__()
         self.workspace_folder: str | None = None
         self.current_file: Path | None = None
         self._raw_points: list[PointResult] = []
+        self._ordered = []
         self._canvas_mode = "Light"
         self._show_labels = True
         self._point_size = 10
@@ -37,10 +40,11 @@ class MapPage(QWidget):
         self._group_by_code = True
         self._reverse_rows = False
         self._auto_grid = True
+        self._fit_pending = False
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 14, 18, 16)
-        root.setSpacing(8)
+        root.setContentsMargins(14, 10, 14, 12)
+        root.setSpacing(6)
 
         title_row = QHBoxLayout()
         title = QLabel("MAP — SURVEY POINT PREVIEW")
@@ -58,8 +62,8 @@ class MapPage(QWidget):
 
         controls_box = QGroupBox("MAP DISPLAY CONTROLS")
         controls = QHBoxLayout(controls_box)
-        controls.setContentsMargins(12, 20, 12, 12)
-        controls.setSpacing(10)
+        controls.setContentsMargins(10, 16, 10, 8)
+        controls.setSpacing(8)
         open_btn = QPushButton("Open Coordinate File")
         open_btn.clicked.connect(self._open)
         controls.addWidget(open_btn)
@@ -69,97 +73,87 @@ class MapPage(QWidget):
         controls.addWidget(QLabel("Background"))
         self.canvas_mode = QComboBox()
         self.canvas_mode.addItems(["Light", "Dark"])
-        self.canvas_mode.setMinimumWidth(90)
+        self.canvas_mode.setMinimumWidth(80)
         self.canvas_mode.currentTextChanged.connect(self._canvas_changed)
         controls.addWidget(self.canvas_mode)
         self.labels_check = QCheckBox("Show Labels")
         self.labels_check.setChecked(True)
         self.labels_check.toggled.connect(self._labels_changed)
         controls.addWidget(self.labels_check)
-        controls.addWidget(QLabel("Point Size"))
+        controls.addWidget(QLabel("Point"))
         self.point_size = QSpinBox()
         self.point_size.setRange(4, 18)
         self.point_size.setValue(self._point_size)
         self.point_size.setSuffix(" px")
-        self.point_size.setMinimumWidth(82)
-        self.point_size.setSingleStep(1)
         self.point_size.valueChanged.connect(self._point_size_changed)
         controls.addWidget(self.point_size)
-        controls.addWidget(QLabel("Label Size"))
+        controls.addWidget(QLabel("Label"))
         self.label_size = QSpinBox()
         self.label_size.setRange(7, 16)
         self.label_size.setValue(self._label_size)
         self.label_size.setSuffix(" pt")
-        self.label_size.setMinimumWidth(82)
-        self.label_size.setSingleStep(1)
         self.label_size.valueChanged.connect(self._label_size_changed)
         controls.addWidget(self.label_size)
-        fit_btn = QPushButton("Fit Extents")
+        fit_btn = QPushButton("FIT ALL POINTS")
         fit_btn.clicked.connect(self._fit)
         controls.addWidget(fit_btn)
         controls.addStretch(1)
         root.addWidget(controls_box)
 
-        self.workspace_label = QLabel("PROJECT WORKSPACE: Not selected")
-        self.workspace_label.setObjectName("pageSubtitle")
-        root.addWidget(self.workspace_label)
-
-        canvas_box = QGroupBox("MAP VIEW")
+        canvas_box = QGroupBox("MAP VIEW — ALL LOADED POINTS")
         canvas_layout = QVBoxLayout(canvas_box)
-        canvas_layout.setContentsMargins(8, 20, 8, 8)
+        canvas_layout.setContentsMargins(6, 16, 6, 6)
         self.scene = QGraphicsScene(self)
         self.view = QGraphicsView(self.scene)
         self.view.setObjectName("mapCanvas")
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.view.setMinimumHeight(440)
+        self.view.setMinimumHeight(520)
         self.view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         canvas_layout.addWidget(self.view, 1)
-        root.addWidget(canvas_box, 1)
+        root.addWidget(canvas_box, 5)
 
         ordering_box = QGroupBox("ZIGZAG / GRID ORDERING")
         ol = QVBoxLayout(ordering_box)
-        ol.setContentsMargins(12, 20, 12, 12)
+        ol.setContentsMargins(10, 16, 10, 8)
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Ordering Method"))
+        row1.addWidget(QLabel("Ordering"))
         self.ordering_combo = QComboBox()
         self.ordering_combo.addItems(["Zigzag (Start West)", "Zigzag (Start East)", "Source Order"])
-        self.ordering_combo.setMinimumWidth(190)
+        self.ordering_combo.setMinimumWidth(170)
         self.ordering_combo.currentTextChanged.connect(self._ordering_changed)
         row1.addWidget(self.ordering_combo)
-        row1.addWidget(QLabel("Group By"))
+        row1.addWidget(QLabel("Group"))
         self.group_combo = QComboBox()
         self.group_combo.addItems(["Point Code / Name", "All Points"])
         self.group_combo.setCurrentIndex(0)
-        self.group_combo.setMinimumWidth(180)
+        self.group_combo.setMinimumWidth(150)
         self.group_combo.currentTextChanged.connect(self._group_changed)
         row1.addWidget(self.group_combo)
-        row1.addWidget(QLabel("Start Corner"))
+        row1.addWidget(QLabel("Start"))
         self.corner_combo = QComboBox()
         self.corner_combo.addItems(["North-West", "North-East"])
-        self.corner_combo.setMinimumWidth(130)
+        self.corner_combo.setMinimumWidth(115)
         self.corner_combo.currentTextChanged.connect(self._corner_changed)
         row1.addWidget(self.corner_combo)
-        row1.addStretch(1)
-        ol.addLayout(row1)
-        row2 = QHBoxLayout()
         self.reverse_check = QCheckBox("Reverse Each Row")
         self.reverse_check.toggled.connect(self._reverse_changed)
-        row2.addWidget(self.reverse_check)
+        row1.addWidget(self.reverse_check)
         self.grid_check = QCheckBox("Auto Detect Grid")
         self.grid_check.setChecked(True)
         self.grid_check.toggled.connect(self._grid_changed)
-        row2.addWidget(self.grid_check)
-        row2.addStretch(1)
-        ol.addLayout(row2)
-        self.order_status = QLabel("Zigzag ordering: each code is ordered independently; each code has its own color.")
+        row1.addWidget(self.grid_check)
+        row1.addStretch(1)
+        ol.addLayout(row1)
+        self.order_status = QLabel("Zigzag is optional. Select Source Order to disable it.")
         self.order_status.setObjectName("pageSubtitle")
         self.order_status.setWordWrap(True)
         ol.addWidget(self.order_status)
         self.legend = QLabel("Code colors will appear here after loading points.")
         self.legend.setWordWrap(True)
         ol.addWidget(self.legend)
-        root.addWidget(ordering_box)
+        root.addWidget(ordering_box, 0)
 
         totals = QHBoxLayout()
         self.total_label = QLabel("Total Points: 0")
@@ -173,21 +167,24 @@ class MapPage(QWidget):
         root.addLayout(totals)
         self._apply_canvas_style()
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self._ordered:
+            self._fit_pending = True
+            self._fit()
+
     def set_workspace_folder(self, folder: str | None) -> None:
         self.workspace_folder = folder
-        self.workspace_label.setText(f"PROJECT WORKSPACE: {folder or 'Not selected'}")
         self.workspace_bar.set_folder(folder, self.current_file)
         if self.current_file and self.current_file.exists():
             self._load_path(str(self.current_file))
 
     def load_active_file(self, path: str) -> None:
-        if not path or not Path(path).is_file():
-            return
-        self.current_file = Path(path).resolve()
-        self.workspace_folder = str(self.current_file.parent)
-        self.workspace_label.setText(f"PROJECT WORKSPACE: {self.workspace_folder}")
-        self.workspace_bar.set_folder(self.workspace_folder, self.current_file)
-        self._load_path(str(self.current_file))
+        if path and Path(path).is_file():
+            self.current_file = Path(path).resolve()
+            self.workspace_folder = str(self.current_file.parent)
+            self.workspace_bar.set_folder(self.workspace_folder, self.current_file)
+            self._load_path(str(self.current_file))
 
     def _open(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Open Coordinate File", self.workspace_folder or "", SUPPORTED_FILTER)
@@ -214,8 +211,10 @@ class MapPage(QWidget):
                 raise ValueError("No valid X/Y points found in this file.")
             self.current_file = file_path.resolve()
             self._apply_ordering()
-            self.info.setText(f"{file_path.name}  |  {len(self._raw_points)} points loaded")
+            self.info.setText(f"{file_path.name} | {len(self._raw_points)} points loaded")
         except Exception as exc:
+            self._raw_points = []
+            self._ordered = []
             self.scene.clear()
             self.info.setText(f"Load failed: {Path(path).name}")
             QMessageBox.critical(self, "Map Error", f"Could not load {Path(path).name}:\n{exc}")
@@ -231,6 +230,7 @@ class MapPage(QWidget):
     def _corner_changed(self, text: str) -> None:
         if self._ordering_mode.startswith("GRID_ZIGZAG"):
             self._ordering_mode = "GRID_ZIGZAG_EAST" if text == "North-East" else "GRID_ZIGZAG_WEST"
+            self.ordering_combo.setCurrentIndex(1 if text == "North-East" else 0)
         self._apply_ordering()
 
     def _reverse_changed(self, checked: bool) -> None:
@@ -253,9 +253,7 @@ class MapPage(QWidget):
             group_by_name=self._group_by_code,
         )
         if self._reverse_rows and self._ordering_mode.startswith("GRID_ZIGZAG"):
-            rows = []
-            current_key = None
-            current_items = []
+            rows, current_key, current_items = [], None, []
             for item in ordered:
                 key = (item.group, item.row)
                 if current_key is not None and key != current_key:
@@ -269,10 +267,11 @@ class MapPage(QWidget):
         self._ordered = ordered
         self._draw(ordered)
         groups = len({item.group for item in ordered}) if self._group_by_code else 1
-        self.order_status.setText(
-            f"Zigzag ordering applied: {len(ordered)} points in {groups} independent code group(s). "
-            "Paths never cross between codes; each code is shown in a different color."
-        )
+        if self._ordering_mode == "SOURCE":
+            status = "Zigzag disabled — source order is used."
+        else:
+            status = f"Zigzag enabled — {len(ordered)} points in {groups} independent code group(s)."
+        self.order_status.setText(status + " Each code has its own color; paths never connect different codes.")
         self.total_label.setText(f"Total Points: {len(self._raw_points)}")
         self.displayed_label.setText(f"Displayed: {len(ordered)}")
         self.invalid_label.setText("Invalid: 0")
@@ -280,30 +279,27 @@ class MapPage(QWidget):
     def _canvas_changed(self, mode: str) -> None:
         self._canvas_mode = mode
         self._apply_canvas_style()
-        if hasattr(self, "_ordered"):
+        if self._ordered:
             self._draw(self._ordered)
 
     def _labels_changed(self, checked: bool) -> None:
         self._show_labels = checked
-        if hasattr(self, "_ordered"):
+        if self._ordered:
             self._draw(self._ordered)
 
     def _point_size_changed(self, value: int) -> None:
         self._point_size = value
-        if hasattr(self, "_ordered"):
+        if self._ordered:
             self._draw(self._ordered)
 
     def _label_size_changed(self, value: int) -> None:
         self._label_size = value
-        if hasattr(self, "_ordered"):
+        if self._ordered:
             self._draw(self._ordered)
 
     def _apply_canvas_style(self) -> None:
         bg = "#0B1420" if self._canvas_mode == "Dark" else "#F7F9FC"
-        border = "#31527A"
-        self.view.setStyleSheet(
-            f"QGraphicsView#mapCanvas {{ background:{bg}; border:1px solid {border}; border-radius:8px; }}"
-        )
+        self.view.setStyleSheet(f"QGraphicsView#mapCanvas {{ background:{bg}; border:1px solid #31527A; border-radius:8px; }}")
 
     def _draw(self, ordered) -> None:
         self.scene.clear()
@@ -315,17 +311,17 @@ class MapPage(QWidget):
         max_y = max(float(item.point.src_y) for item in ordered)
         dx = max(max_x - min_x, 1e-9)
         dy = max(max_y - min_y, 1e-9)
-        width, height, margin = 1100.0, 680.0, 64.0
+        width, height, margin = 1600.0, 1000.0, 90.0
         light = self._canvas_mode == "Light"
         bg = QColor("#F7F9FC") if light else QColor("#0B1420")
         grid = QColor("#D6DEE9") if light else QColor("#263A53")
         text_color = QColor("#172235") if light else QColor("#F4F8FF")
         secondary_text = QColor("#52627A") if light else QColor("#AFC3DD")
         self.scene.setBackgroundBrush(QBrush(bg))
-        self.scene.setSceneRect(0, 0, width, height)
-        for i in range(1, 11):
-            x = margin + i * (width - 2 * margin) / 11
-            y = margin + i * (height - 2 * margin) / 11
+        self.scene.setSceneRect(QRectF(0, 0, width, height))
+        for i in range(1, 12):
+            x = margin + i * (width - 2 * margin) / 13
+            y = margin + i * (height - 2 * margin) / 13
             self.scene.addLine(x, margin, x, height - margin, QPen(grid, 0.7))
             self.scene.addLine(margin, y, width - margin, y, QPen(grid, 0.7))
         positions = {}
@@ -334,25 +330,26 @@ class MapPage(QWidget):
             sy = height - (margin + (float(item.point.src_y) - min_y) / dy * (height - 2 * margin))
             positions[id(item)] = (sx, sy)
 
-        groups = {}
+        groups: dict[str, list] = {}
         for item in ordered:
-            groups.setdefault(item.group, []).append(item)
+            groups.setdefault(str(item.group), []).append(item)
         color_map = {group: GROUP_COLORS[i % len(GROUP_COLORS)] for i, group in enumerate(groups)}
         legend_parts = []
         for group, group_items in groups.items():
             color = QColor(color_map[group])
-            pen = QPen(color, 2.4, Qt.PenStyle.DashLine)
-            for a, b in zip(group_items, group_items[1:]):
-                x1, y1 = positions[id(a)]
-                x2, y2 = positions[id(b)]
-                self.scene.addLine(x1, y1, x2, y2, pen)
+            if self._ordering_mode != "SOURCE":
+                pen = QPen(color, 2.6, Qt.PenStyle.DashLine)
+                for a, b in zip(group_items, group_items[1:]):
+                    x1, y1 = positions[id(a)]
+                    x2, y2 = positions[id(b)]
+                    self.scene.addLine(x1, y1, x2, y2, pen)
             legend_parts.append(f'<span style="color:{color.name()};"><b>●</b> {group}</span>')
 
         self.legend.setText("&nbsp;&nbsp;".join(legend_parts) if legend_parts else "No code groups")
         radius = self._point_size / 2.0
         for item in ordered:
             sx, sy = positions[id(item)]
-            group_color = QColor(color_map[item.group])
+            group_color = QColor(color_map[str(item.group)])
             point = self.scene.addEllipse(
                 sx - radius, sy - radius, self._point_size, self._point_size,
                 QPen(QColor("#FFFFFF"), 1.5), QBrush(group_color)
@@ -360,7 +357,7 @@ class MapPage(QWidget):
             point.setZValue(10)
             point.setToolTip(
                 f"{item.point.name}\nX: {float(item.point.src_x):.3f}\n"
-                f"Y: {float(item.point.src_y):.3f}\nCode Group: {item.group}\nOrder: {item.number}"
+                f"Y: {float(item.point.src_y):.3f}\nCode: {item.group}\nOrder: {item.number}"
             )
             if self._show_labels:
                 label = QGraphicsTextItem(f"{item.number}. {item.point.name}")
@@ -379,11 +376,15 @@ class MapPage(QWidget):
         y_label.setPos(margin, 16)
         self.scene.addItem(x_label)
         self.scene.addItem(y_label)
+        self._fit_pending = True
         self._fit()
 
     def _fit(self) -> None:
-        if self.scene.items():
-            self.view.fitInView(
-                self.scene.itemsBoundingRect().adjusted(-28, -28, 28, 28),
-                Qt.AspectRatioMode.KeepAspectRatio,
-            )
+        if not self._ordered:
+            return
+        # Fit the fixed drawing canvas, not its labels/items. This guarantees
+        # that the complete point extent is visible and labels cannot force the
+        # map to zoom out unpredictably.
+        target = self.scene.sceneRect().adjusted(18, 18, -18, -18)
+        self.view.fitInView(target, Qt.AspectRatioMode.KeepAspectRatio)
+        self._fit_pending = False
