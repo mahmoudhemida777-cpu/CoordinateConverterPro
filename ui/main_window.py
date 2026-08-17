@@ -15,7 +15,7 @@ from ui.pages.about_page import AboutPage
 from ui.i18n import tr
 from ui.theme import apply_theme
 
-APP_NAME="MH GeoSuite Pro"; APP_TAGLINE="Professional Surveying & Geospatial Engineering Suite"
+APP_NAME="MH - Coordinate"; APP_TAGLINE="Professional Surveying & Geospatial Engineering Suite"
 SIDEBAR_ITEMS=[
     ("dashboard","Dashboard",QStyle.StandardPixmap.SP_ComputerIcon),
     ("import","Import",QStyle.StandardPixmap.SP_DialogOpenButton),
