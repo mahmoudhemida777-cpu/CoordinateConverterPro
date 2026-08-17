@@ -63,11 +63,52 @@ class AboutPage(QWidget):
 
     def _check_updates(self) -> None:
         try:
-            from core.updater import check_for_update
+            from core.updater import check_for_update, install_latest_windows
+            import sys
+
+            if not getattr(sys, "frozen", False):
+                QMessageBox.information(
+                    self,
+                    "MH - Coordinate",
+                    "Update installation is available in the Windows standalone version."
+                )
+                return
+
             update = check_for_update(APP_VERSION)
-        except Exception:
-            update = None
-        if update:
-            QMessageBox.information(self, "Update Available", f"Version {update[0]} is available. Restart the application to install it automatically.")
-        else:
-            QMessageBox.information(self, "MH - Coordinate", "You are using the latest available version.")
+            if not update:
+                QMessageBox.information(
+                    self,
+                    "MH - Coordinate",
+                    "You are using the latest available version."
+                )
+                return
+
+            version, _page_url = update
+            answer = QMessageBox.question(
+                self,
+                "Update Available",
+                f"A new version ({version}) is available.\n\n"
+                "Download and install it now? The program will close and restart automatically.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+            if install_latest_windows(self):
+                # The updater process waits for this application to exit,
+                # replaces the EXE, then starts the updated version.
+                from PySide6.QtWidgets import QApplication
+                QApplication.instance().quit()
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Update Failed",
+                    "The update could not be installed. Check your internet connection and try again."
+                )
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Update Error",
+                f"Unable to check for updates.\n\n{exc}"
+            )
