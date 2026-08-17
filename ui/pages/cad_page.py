@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import csv
 from pathlib import Path
 
@@ -7,9 +8,9 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QFileDialog, QTableWidget, QTableWidgetItem, QProgressBar, QMessageBox,
     QGroupBox, QCheckBox, QComboBox, QRadioButton, QHeaderView, QSizePolicy,
-    QScrollArea,
-    QAbstractItemView
+    QScrollArea, QAbstractItemView
 )
+
 from core.crs.engine import CRSEngine
 from core.models import PointResult
 from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
@@ -18,6 +19,7 @@ from core.point_ordering import order_points
 from ui.widgets.crs_picker import CRSPicker
 from ui.widgets.workspace_bar import WorkspaceFileBar
 from ui.pages.settings_page import current_precision
+
 
 COORDINATE_FILTER = (
     "Coordinate files (*.kmz *.kml *.csv *.xlsx *.txt);;"
@@ -33,15 +35,23 @@ def _section(box: QGroupBox, number: str, title: str) -> None:
 
 
 class CadPage(QWidget):
+    """Real CAD/Civil 3D preparation page.
+
+    The page intentionally keeps parsing, CRS conversion, ordering and export
+    separate.  A loaded file is never treated as converted until the conversion
+    step succeeds; direct mode is the explicit exception and copies source
+    coordinates verbatim.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("cadPage")
         self.engine = CRSEngine()
-        self.source_points = []
-        self.result_points = []
-        self.current_file = None
-        self.workspace_folder = None
-        self._detected_columns = []
+        self.source_points: list[PointResult] = []
+        self.result_points: list[PointResult] = []
+        self.current_file: str | None = None
+        self.workspace_folder: str | None = None
+        self._detected_columns: list[str] = []
         self._axis_swapped = False
 
         root = QVBoxLayout(self)
@@ -72,7 +82,6 @@ class CadPage(QWidget):
         root.addWidget(self.workspace_bar)
 
         file_row = QHBoxLayout()
-        file_row.setSpacing(8)
         self.file_status = QLabel("No coordinate file loaded")
         self.file_status.setWordWrap(True)
         file_row.addWidget(self.file_status, 1)
@@ -87,8 +96,13 @@ class CadPage(QWidget):
         self.direct_mode.stateChanged.connect(self._mode_changed)
         root.addWidget(self.direct_mode)
 
+        # The previous implementation referenced `split` before creating it.
+        # Keep an explicit two-pane layout so the options/preview relationship
+        # remains stable and resizing/scrolling is deterministic.
+        split = QHBoxLayout()
+        split.setSpacing(10)
+        root.addLayout(split, 1)
 
-        # -------------------- LEFT: options --------------------
         left_content = QWidget()
         ll = QVBoxLayout(left_content)
         ll.setContentsMargins(2, 2, 8, 2)
@@ -99,6 +113,7 @@ class CadPage(QWidget):
         left_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         left_scroll.setWidget(left_content)
+        split.addWidget(left_scroll, 1)
 
         parsing = QGroupBox()
         _section(parsing, "1", "FILE & PARSING OPTIONS")
@@ -109,6 +124,7 @@ class CadPage(QWidget):
 
         self.parsing_engine = QComboBox()
         self.parsing_engine.addItems(["Smart (Recommended)", "Manual / Selected Columns"])
+        self.parsing_engine.currentIndexChanged.connect(lambda _: self._reparse_current())
         self.detected_format = QComboBox()
         self.detected_format.setEnabled(False)
         pg.addWidget(QLabel("Parsing Engine"), 0, 0)
@@ -120,8 +136,8 @@ class CadPage(QWidget):
         self.y_column = QComboBox()
         self.z_column = QComboBox()
         self.name_column = QComboBox()
-        for c in (self.x_column, self.y_column, self.z_column, self.name_column):
-            c.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        for combo in (self.x_column, self.y_column, self.z_column, self.name_column):
+            combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         pg.addWidget(QLabel("Easting / X"), 1, 0)
         pg.addWidget(self.x_column, 1, 1)
         pg.addWidget(QLabel("Northing / Y"), 1, 2)
@@ -138,7 +154,6 @@ class CadPage(QWidget):
         _section(axis, "2", "AXIS ORDER — IMPORTANT")
         af = QVBoxLayout(axis)
         af.setContentsMargins(12, 22, 12, 10)
-        af.setSpacing(4)
         self.axis_xy = QRadioButton("Easting (X) → Northing (Y)  |  Standard")
         self.axis_yx = QRadioButton("Northing (Y) → Easting (X)  |  SWAP")
         self.axis_xy.setChecked(True)
@@ -150,7 +165,6 @@ class CadPage(QWidget):
         _section(ordering, "3", "GRID / ZIGZAG POINT NUMBERING")
         og = QGridLayout(ordering)
         og.setContentsMargins(12, 22, 12, 12)
-        og.setVerticalSpacing(7)
         self.ordering_mode = QComboBox()
         self.ordering_mode.addItem("Grid Zigzag — Start West (W → E)", "GRID_ZIGZAG_WEST")
         self.ordering_mode.addItem("Grid Zigzag — Start East (E → W)", "GRID_ZIGZAG_EAST")
@@ -204,7 +218,6 @@ class CadPage(QWidget):
         ll.addWidget(self.progress)
 
         summary = QHBoxLayout()
-        summary.setSpacing(12)
         self.total = QLabel("Total: 0")
         self.success = QLabel("Success: 0")
         self.failed = QLabel("Failed: 0")
@@ -214,12 +227,25 @@ class CadPage(QWidget):
         summary.addStretch()
         ll.addLayout(summary)
         ll.addStretch(1)
-        split.addWidget(left_scroll)
 
-        root.addWidget(left_scroll, 1)
+        preview_box = QGroupBox("POINTS PREVIEW TABLE")
+        preview_layout = QVBoxLayout(preview_box)
+        preview_layout.setContentsMargins(10, 22, 10, 8)
+        self.table = QTableWidget(0, 6)
+        self.table.setObjectName("cadPointsTable")
+        self.table.setHorizontalHeaderLabels(
+            ["#", "Point Code / Name", "Easting / X", "Northing / Y", "Elevation / Z", "Status"]
+        )
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setDefaultSectionSize(28)
+        preview_layout.addWidget(self.table)
+        split.addWidget(preview_box, 2)
 
         export_row = QHBoxLayout()
-        export_row.setSpacing(8)
         dxf = QPushButton("EXPORT DXF")
         civil = QPushButton("EXPORT CIVIL 3D CSV")
         dxf.clicked.connect(self._export_dxf)
@@ -228,355 +254,346 @@ class CadPage(QWidget):
         export_row.addWidget(civil, 1)
         root.addLayout(export_row)
 
-        table_box = QGroupBox("POINTS PREVIEW TABLE")
-        tl = QVBoxLayout(table_box)
-        tl.setContentsMargins(10, 22, 10, 8)
-        self.table = QTableWidget(0, 6)
-        self.table.setObjectName("cadPointsTable")
-        self.table.setHorizontalHeaderLabels(
-            ["#", "Point Code / Name", "Easting / X", "Northing / Y", "Elevation / Z", "Status"]
-        )
-        self.table.setMinimumHeight(145)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.verticalHeader().setDefaultSectionSize(28)
-        tl.addWidget(self.table)
-        root.addWidget(table_box)
-
         self.axis_xy.toggled.connect(lambda _: self._refresh_preview())
         self.axis_yx.toggled.connect(lambda _: self._refresh_preview())
         self.ordering_mode.currentIndexChanged.connect(lambda _: self._refresh_preview())
         self.group_by_name.toggled.connect(lambda _: self._refresh_preview())
+        self.tolerance_combo.currentIndexChanged.connect(lambda _: self._refresh_preview())
 
-    def set_workspace_folder(self, folder: str):
+    # ---------- Workspace integration ----------
+    def set_workspace_folder(self, folder: str) -> None:
         self.workspace_folder = folder
         self.workspace_bar.set_folder(folder, self.current_file)
 
     def load_active_file(self, path: str) -> None:
-        if not path or not Path(path).is_file():
-            return
-        if self.current_file and Path(path).resolve() == Path(self.current_file).resolve():
-            self.file_status.setText(
-                f"Selected from Dashboard: {Path(path).name} — {len(self.source_points)} points loaded"
-            )
-            return
-        self.workspace_folder = str(Path(path).parent)
-        self.workspace_bar.set_folder(self.workspace_folder, path)
-        self._load_path(path)
+        if path and Path(path).is_file():
+            self._load_path(path)
 
-    def _choose_file(self):
+    def _choose_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Choose Coordinate File", self.workspace_folder or "", COORDINATE_FILTER
         )
         if path:
             self._load_path(path)
 
-    def _mode_changed(self):
-        if self.direct_mode.isChecked() and self.source_points:
+    def _load_batch_converted_xlsx(self, path: str) -> bool:
+        try:
+            points = xlsx_parser.parse_xlsx_auto(path)
+            if not points:
+                return False
+            self.current_file = path
+            self.workspace_folder = str(Path(path).parent)
+            self.source_points = points
             self.result_points = [
-                PointResult(
-                    p.name, p.src_x, p.src_y, p.src_z,
-                    p.src_x, p.src_y, p.src_z,
-                    status="SUCCESS", message="DIRECT — no CRS conversion"
-                )
-                for p in self.source_points
+                PointResult(p.name, p.src_x, p.src_y, p.src_z, p.src_x, p.src_y, p.src_z,
+                            status=p.status, message="Loaded from batch conversion")
+                for p in points
             ]
+            self.direct_mode.setChecked(True)
+            self._populate_parsing_options(path, ".xlsx")
             self._populate()
             self._refresh_preview()
-        elif (
-            not self.direct_mode.isChecked()
-            and self.result_points
-            and all("DIRECT" in (p.message or "") for p in self.result_points)
-        ):
+            self.file_status.setText(f"Batch result loaded: {Path(path).name} — {len(points)} points")
+            return True
+        except Exception as exc:
+            self.file_status.setText(f"Batch result could not be loaded: {exc}")
+            return False
+
+    # ---------- Parsing ----------
+    def _load_path(self, path: str) -> None:
+        try:
+            path_obj = Path(path)
+            suffix = path_obj.suffix.casefold()
+            if suffix not in {".csv", ".xlsx", ".txt", ".kml", ".kmz"}:
+                raise ValueError(f"Unsupported coordinate file type: {suffix}")
+            self.current_file = str(path_obj)
+            self.workspace_folder = str(path_obj.parent)
+            self.workspace_bar.set_folder(self.workspace_folder, self.current_file)
+            self._populate_parsing_options(self.current_file, suffix)
+            points = self._parse_smart()
+            if not points:
+                raise ValueError("No coordinate points were detected in the selected file.")
+            self.source_points = points
+            self.result_points = []
+            self.progress.setValue(0)
+            self._populate()
+            self._refresh_preview()
+            self.file_status.setText(f"Loaded: {path_obj.name} — {len(points)} points detected")
+        except Exception as exc:
+            self.source_points = []
             self.result_points = []
             self._populate()
-            self._refresh_preview()
+            self.file_status.setText(f"Load failed: {exc}")
+            QMessageBox.critical(self, "Coordinate File Error", str(exc))
 
-    @staticmethod
-    def _pick_column(columns, names):
-        normalized = [str(c).strip().lower() for c in columns]
-        for name in names:
-            if name in normalized:
-                return normalized.index(name)
-        for i, key in enumerate(normalized):
-            if any(name in key for name in names):
-                return i
-        return -1
+    def _parse_smart(self):
+        suffix = Path(self.current_file).suffix.casefold()
+        if suffix == ".csv":
+            return csv_parser.parse_csv_auto(self.current_file)
+        if suffix == ".xlsx":
+            return xlsx_parser.parse_xlsx_auto(self.current_file)
+        if suffix == ".txt":
+            return txt_parser.parse_txt(self.current_file)
+        if suffix in {".kml", ".kmz"}:
+            return kml_parser.parse_kml_or_kmz(self.current_file)
+        return []
 
-    def _populate_parsing_options(self, path, suffix):
+    def _populate_parsing_options(self, path: str, suffix: str) -> None:
         self._detected_columns = []
+        for combo in (self.x_column, self.y_column, self.z_column, self.name_column):
+            combo.clear()
         self.detected_format.clear()
-        self.x_column.clear()
-        self.y_column.clear()
-        self.z_column.clear()
-        self.name_column.clear()
-        self.detected_format.addItem(
-            {
-                ".csv": "CSV (Comma delimited)",
-                ".xlsx": "Excel Workbook",
-                ".txt": "Survey TXT",
-                ".kml": "KML",
-                ".kmz": "KMZ",
-            }.get(suffix, suffix)
-        )
+        self.detected_format.addItem({
+            ".csv": "CSV (Comma delimited)",
+            ".xlsx": "Excel Workbook",
+            ".txt": "Survey TXT",
+            ".kml": "KML / WGS 84",
+            ".kmz": "KMZ / WGS 84",
+        }.get(suffix, suffix))
         if suffix == ".csv":
             self._detected_columns = list(csv_parser.sniff_columns(path))
         elif suffix == ".xlsx":
             self._detected_columns = list(xlsx_parser.sniff_columns(path))
+        elif suffix == ".txt":
+            self._detected_columns = list(txt_parser.sniff_columns(path))
         else:
+            self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Longitude / Latitude)")
             return
-        for c in (self.x_column, self.y_column, self.z_column, self.name_column):
-            c.addItems(self._detected_columns)
+        for combo in (self.x_column, self.y_column, self.z_column, self.name_column):
+            combo.addItems(self._detected_columns)
         self.z_column.insertItem(0, "<none>")
         self.name_column.insertItem(0, "<none>")
         xi = self._pick_column(self._detected_columns, ("easting", "east", "x", "longitude", "lon"))
         yi = self._pick_column(self._detected_columns, ("northing", "north", "y", "latitude", "lat"))
         zi = self._pick_column(self._detected_columns, ("elevation", "elev", "height", "z"))
-        ni = self._pick_column(
-            self._detected_columns,
-            ("point number", "point_number", "pointid", "pointcode", "code", "point", "name", "id"),
-        )
-        if xi >= 0:
-            self.x_column.setCurrentIndex(xi)
-        if yi >= 0:
-            self.y_column.setCurrentIndex(yi)
-        if zi >= 0:
-            self.z_column.setCurrentIndex(zi + 1)
-        if ni >= 0:
-            self.name_column.setCurrentIndex(ni + 1)
+        ni = self._pick_column(self._detected_columns, (
+            "point number", "point_number", "pointno", "pointid", "pointcode", "code", "point", "name", "id", "number"
+        ))
+        if xi >= 0: self.x_column.setCurrentIndex(xi)
+        if yi >= 0: self.y_column.setCurrentIndex(yi)
+        if zi >= 0: self.z_column.setCurrentIndex(zi + 1)
+        if ni >= 0: self.name_column.setCurrentIndex(ni + 1)
+
+    @staticmethod
+    def _pick_column(columns, names) -> int:
+        normalized = [str(c).strip().lower().replace("_", " ") for c in columns]
+        for name in names:
+            key = str(name).strip().lower().replace("_", " ")
+            if key in normalized:
+                return normalized.index(key)
+        for i, key in enumerate(normalized):
+            if any(str(name).lower().replace("_", " ") in key for name in names):
+                return i
+        return -1
+
+    def _reparse_current(self) -> None:
+        if not self.current_file or not Path(self.current_file).is_file():
+            return
+        try:
+            if self.parsing_engine.currentIndex() == 0:
+                self.source_points = self._parse_smart()
+            else:
+                self.source_points = self._apply_manual_mapping() or []
+            self.result_points = []
+            self._populate()
+            self._refresh_preview()
+        except Exception as exc:
+            self.file_status.setText(f"Parsing failed: {exc}")
 
     def _apply_manual_mapping(self):
         suffix = Path(self.current_file).suffix.casefold()
+        name = self.name_column.currentText()
+        z = self.z_column.currentText()
+        mapping_name = None if name in {"", "<none>"} else name
+        mapping_z = None if z in {"", "<none>"} else z
         if suffix == ".csv":
-            n = self.name_column.currentText()
-            z = self.z_column.currentText()
-            return csv_parser.parse_csv(
-                self.current_file,
-                csv_parser.ColumnMapping(
-                    None if n == "<none>" else n,
-                    self.x_column.currentText(),
-                    self.y_column.currentText(),
-                    None if z == "<none>" else z,
-                ),
-            )
+            return csv_parser.parse_csv(self.current_file, csv_parser.ColumnMapping(
+                mapping_name, self.x_column.currentText(), self.y_column.currentText(), mapping_z
+            ))
         if suffix == ".xlsx":
-            n = self.name_column.currentText()
-            z = self.z_column.currentText()
-            return xlsx_parser.parse_xlsx(
-                self.current_file,
-                xlsx_parser.ColumnMapping(
-                    None if n == "<none>" else n,
-                    self.x_column.currentText(),
-                    self.y_column.currentText(),
-                    None if z == "<none>" else z,
-                ),
-            )
-        return None
+            return xlsx_parser.parse_xlsx(self.current_file, xlsx_parser.ColumnMapping(
+                mapping_name, self.x_column.currentText(), self.y_column.currentText(), mapping_z
+            ))
+        return self._parse_smart()
 
-    def _apply_axis(self, points):
+    # ---------- Conversion / ordering ----------
+    def _mode_changed(self) -> None:
+        if self.direct_mode.isChecked() and self.source_points:
+            self.result_points = [
+                PointResult(p.name, p.src_x, p.src_y, p.src_z,
+                            p.src_x, p.src_y, p.src_z,
+                            status=p.status if p.status != "PENDING" else "SUCCESS",
+                            message="DIRECT — no CRS conversion")
+                for p in self.source_points
+            ]
+        elif not self.direct_mode.isChecked() and self.result_points and all(
+            "DIRECT" in (p.message or "") for p in self.result_points
+        ):
+            self.result_points = []
+        self._populate()
+        self._refresh_preview()
+
+    def _apply_axis(self, points: list[PointResult]) -> list[PointResult]:
         if not self.axis_yx.isChecked():
             self._axis_swapped = False
             return points
         self._axis_swapped = True
         return [
-            PointResult(
-                p.name, p.src_y, p.src_x, p.src_z, p.tgt_y, p.tgt_x, p.tgt_z,
-                status=p.status, message=(p.message or "") + " | AXIS SWAPPED"
-            )
+            PointResult(p.name, p.src_y, p.src_x, p.src_z, status=p.status, message=p.message)
             for p in points
         ]
 
-    def _load_path(self, path):
-        file_path = Path(path)
-        try:
-            suffix = file_path.suffix.casefold()
-            if suffix == ".kmz":
-                points = kml_parser.parse_kmz_file(path)
-            elif suffix == ".kml":
-                points = kml_parser.parse_kml_file(path)
-            elif suffix == ".csv":
-                points = csv_parser.parse_csv_auto(path)
-            elif suffix == ".xlsx":
-                points = xlsx_parser.parse_xlsx_auto(path)
-            elif suffix == ".txt":
-                points = txt_parser.parse_txt(path)
-            else:
-                raise ValueError(f"Unsupported file type: {suffix}")
-            if not points:
-                raise ValueError("No valid X/Y coordinate points were found in the selected file.")
-        except Exception as exc:
-            QMessageBox.critical(self, "Import Error", str(exc))
-            return
-
-        self.current_file = str(file_path)
-        self.workspace_folder = str(file_path.parent)
-        self.source_points = list(points)
-        self.result_points = []
-        self._axis_swapped = False
-        self.file_status.setText(
-            f"✓ Selected file: {file_path.name}   |   {len(points)} points loaded"
-        )
-        self.progress.setValue(0)
-        self._populate_parsing_options(path, suffix)
-        self._populate()
-        self._refresh_preview()
-        if suffix in {".kml", ".kmz"}:
-            self.source_picker.set_selected(
-                "EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)"
-            )
-
-    def _refresh_preview(self):
+    def _convert(self) -> None:
         if not self.source_points:
-            self.table.setRowCount(0)
+            QMessageBox.warning(self, "No Input", "Load a coordinate file before conversion.")
             return
-        pts = self.result_points if self.result_points else self.source_points
-        mode = str(self.ordering_mode.currentData() or "GRID_ZIGZAG_WEST")
-        ordered = order_points(pts, mode=mode, group_by_name=self.group_by_name.isChecked())
-        self._populate_table(ordered)
+        try:
+            points = self._apply_axis(self.source_points)
+            self.total.setText(f"Total: {len(points)}")
+            self.progress.setValue(10)
+            if self.direct_mode.isChecked():
+                self.result_points = [
+                    PointResult(p.name, p.src_x, p.src_y, p.src_z,
+                                p.src_x, p.src_y, p.src_z,
+                                status="SUCCESS" if p.src_x is not None and p.src_y is not None else "FAILED",
+                                message="DIRECT — no CRS conversion")
+                    for p in points
+                ]
+            else:
+                source = self.source_picker.selected_epsg()
+                target = self.target_picker.selected_epsg()
+                if not source or not target:
+                    raise ValueError("Select both Source CRS and Target CRS before conversion.")
+                self.result_points = self.engine.transform_points(source, target, points, operation="auto")
+            self.progress.setValue(90)
+            self._populate()
+            self._refresh_preview()
+            ok = sum(p.status == "SUCCESS" for p in self.result_points)
+            bad = len(self.result_points) - ok
+            self.success.setText(f"Success: {ok}")
+            self.failed.setText(f"Failed: {bad}")
+            self.progress.setValue(100)
+            if bad:
+                self.file_status.setText(f"Conversion completed with {bad} failed point(s)")
+            else:
+                self.file_status.setText(f"Conversion completed successfully — {ok} point(s)")
+        except Exception as exc:
+            self.progress.setValue(0)
+            QMessageBox.critical(self, "Conversion Error", str(exc))
+            self.file_status.setText(f"Conversion failed: {exc}")
 
-    def _populate_table(self, ordered):
+    def _ordering_tolerance(self) -> float | None:
+        value = self.tolerance_combo.currentText()
+        return None if value == "Auto" else float(value)
+
+    def _ordered_results(self):
+        points = self.result_points or self.source_points
+        mode = self.ordering_mode.currentData() or "SOURCE"
+        return order_points(
+            points,
+            mode=mode,
+            tolerance=self._ordering_tolerance() if self.auto_grid.isChecked() else None,
+            group_by_name=self.group_by_name.isChecked(),
+        )
+
+    def _refresh_preview(self) -> None:
+        ordered = self._ordered_results() if (self.result_points or self.source_points) else []
+        self.table.setRowCount(0)
         precision = current_precision()
-        self.table.setRowCount(len(ordered))
-        for r, item in enumerate(ordered):
+        for item in ordered:
             p = item.point
+            row = self.table.rowCount()
+            self.table.insertRow(row)
             x = p.tgt_x if p.tgt_x is not None else p.src_x
             y = p.tgt_y if p.tgt_y is not None else p.src_y
             z = p.tgt_z if p.tgt_z is not None else p.src_z
-            vals = [
-                item.number, p.name,
-                "" if x is None else f"{x:.{precision}f}",
-                "" if y is None else f"{y:.{precision}f}",
-                "" if z is None else f"{z:.{precision}f}", p.status,
+            values = [
+                str(item.number), str(p.name or ""),
+                "" if x is None else f"{float(x):.{precision}f}",
+                "" if y is None else f"{float(y):.{precision}f}",
+                "" if z is None else f"{float(z):.{precision}f}",
+                p.status,
             ]
-            for c, v in enumerate(vals):
-                self.table.setItem(r, c, QTableWidgetItem(str(v)))
+            for col, value in enumerate(values):
+                self.table.setItem(row, col, QTableWidgetItem(value))
+        self.total.setText(f"Total: {len(ordered)}")
+        ok = sum(p.point.status == "SUCCESS" for p in ordered)
+        bad = sum(p.point.status == "FAILED" for p in ordered)
+        self.success.setText(f"Success: {ok}")
+        self.failed.setText(f"Failed: {bad}")
 
-    def _populate(self):
-        pts = self.result_points if self.result_points else self.source_points
-        self.total.setText(f"Total: {len(pts)}")
-        self.success.setText(f"Success: {sum(p.status == 'SUCCESS' for p in pts)}")
-        self.failed.setText(f"Failed: {sum(p.status == 'FAILED' for p in pts)}")
-
-    def _convert(self):
-        if not self.source_points:
-            QMessageBox.warning(self, "No data", "Choose a coordinate file first.")
-            return
-        if self.direct_mode.isChecked():
-            self._mode_changed()
-            return
-        if self.parsing_engine.currentIndex() == 1:
-            try:
-                mapped = self._apply_manual_mapping()
-            except Exception as exc:
-                QMessageBox.critical(self, "Parsing Error", str(exc))
-                return
-            if mapped:
-                self.source_points = self._apply_axis(mapped)
-                self._refresh_preview()
-        src = self.source_picker.selected_epsg()
-        tgt = self.target_picker.selected_epsg()
-        if not src or not tgt:
-            QMessageBox.warning(
-                self, "No CRS",
-                "Select Source CRS and Target CRS, or enable DIRECT CAD EXPORT."
-            )
-            return
-        self.result_points = []
-        self.progress.setRange(0, len(self.source_points))
-        for i, p in enumerate(self.source_points, 1):
-            self.result_points.append(self.engine.transform_points(src, tgt, [p])[0])
-            self.progress.setValue(i)
-        self._populate()
+    def _populate(self) -> None:
         self._refresh_preview()
 
-    def _export_dxf(self):
-        pts = (
-            self.result_points
-            if not self.direct_mode.isChecked()
-            else [
-                PointResult(
-                    p.name, p.src_x, p.src_y, p.src_z,
-                    p.src_x, p.src_y, p.src_z, status="SUCCESS"
-                ) for p in self.source_points
-            ]
-        )
-        valid = [
-            p for p in pts
-            if p.status == "SUCCESS"
-            and (p.tgt_x if not self.direct_mode.isChecked() else p.src_x) is not None
-            and (p.tgt_y if not self.direct_mode.isChecked() else p.src_y) is not None
-        ]
-        if not valid:
-            QMessageBox.warning(self, "Nothing to export", "No validated coordinates are available.")
+    # ---------- Export ----------
+    def _export_dxf(self) -> None:
+        points = self.result_points or self.source_points
+        if not points:
+            QMessageBox.warning(self, "No Data", "Load and prepare coordinate points first.")
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export DXF", "CAD_Points.dxf", "AutoCAD DXF (*.dxf)"
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Export DXF", self.workspace_folder or "", "DXF (*.dxf)")
         if not path:
             return
         try:
             export_dxf(
-                valid, path,
-                label_mode=LabelMode.NAME if self.write_code.isChecked() else LabelMode.NUMBER,
-                text_height=1.0,
-                use_target_coords=not self.direct_mode.isChecked(),
-                order_mode=str(self.ordering_mode.currentData()),
+                points,
+                path,
+                label_mode=LabelMode.NUMBER_AND_NAME if self.write_code.isChecked() else LabelMode.NUMBER,
+                use_target_coords=not self.direct_mode.isChecked() and bool(self.result_points),
+                order_mode=self.ordering_mode.currentData() or "SOURCE",
+                tolerance=self._ordering_tolerance() if self.auto_grid.isChecked() else None,
                 group_by_name=self.group_by_name.isChecked(),
             )
-            QMessageBox.information(self, "DXF Exported", f"DXF created successfully:\n{path}")
+            self.file_status.setText(f"DXF exported: {Path(path).name}")
+            QMessageBox.information(self, "DXF Export", f"DXF created successfully:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, "DXF Export Error", str(exc))
 
-    def _export_civil3d_csv(self):
-        pts = (
-            self.result_points
-            if not self.direct_mode.isChecked()
-            else [
-                PointResult(
-                    p.name, p.src_x, p.src_y, p.src_z,
-                    p.src_x, p.src_y, p.src_z, status="SUCCESS"
-                ) for p in self.source_points
-            ]
-        )
-        valid = [p for p in pts if p.status == "SUCCESS"]
+    def _export_civil3d_csv(self) -> None:
+        points = self.result_points or self.source_points
+        if not points:
+            QMessageBox.warning(self, "No Data", "Load and prepare coordinate points first.")
+            return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Civil 3D CSV", "Civil3D_Points.csv", "CSV (*.csv)"
+            self, "Export Civil 3D CSV", self.workspace_folder or "", "CSV (*.csv)"
         )
         if not path:
             return
-        precision = current_precision()
-        ordered = order_points(
-            valid,
-            mode=str(self.ordering_mode.currentData()),
-            group_by_name=self.group_by_name.isChecked(),
-        )
         try:
+            ordered = self._ordered_results()
+            precision = current_precision()
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
-                w = csv.writer(f)
-                w.writerow(["Point Number", "Easting", "Northing", "Elevation", "Description"])
+                writer = csv.writer(f)
+                writer.writerow(["Point Number", "Point Code", "Easting", "Northing", "Elevation", "Status", "Message"])
                 for item in ordered:
                     p = item.point
-                    x = p.tgt_x if not self.direct_mode.isChecked() else p.src_x
-                    y = p.tgt_y if not self.direct_mode.isChecked() else p.src_y
-                    z = p.tgt_z if not self.direct_mode.isChecked() else p.src_z
-                    w.writerow([
-                        item.number, f"{x:.{precision}f}", f"{y:.{precision}f}",
-                        f"{0 if z is None else z:.{precision}f}", p.name or ""
+                    x = p.tgt_x if p.tgt_x is not None else p.src_x
+                    y = p.tgt_y if p.tgt_y is not None else p.src_y
+                    z = p.tgt_z if p.tgt_z is not None else p.src_z
+                    writer.writerow([
+                        item.number, p.name or "",
+                        "" if x is None else f"{float(x):.{precision}f}",
+                        "" if y is None else f"{float(y):.{precision}f}",
+                        "" if z is None else f"{float(z):.{precision}f}",
+                        p.status, p.message,
                     ])
-            QMessageBox.information(
-                self, "Civil 3D CSV Exported", f"File created successfully:\n{path}"
-            )
+            self.file_status.setText(f"Civil 3D CSV exported: {Path(path).name}")
+            QMessageBox.information(self, "Civil 3D Export", f"CSV created successfully:\n{path}")
         except Exception as exc:
-            QMessageBox.critical(self, "CSV Export Error", str(exc))
+            QMessageBox.critical(self, "Civil 3D Export Error", str(exc))
 
-    def _reset_page(self):
+    # ---------- Reset ----------
+    def _reset_page(self) -> None:
         self.source_points = []
         self.result_points = []
         self.current_file = None
-        self.file_status.setText("No coordinate file loaded")
-        self.table.setRowCount(0)
+        self._axis_swapped = False
+        self.direct_mode.blockSignals(True)
+        self.direct_mode.setChecked(False)
+        self.direct_mode.blockSignals(False)
         self.progress.setValue(0)
+        self.file_status.setText("No coordinate file loaded")
+        self.detected_format.clear()
+        for combo in (self.x_column, self.y_column, self.z_column, self.name_column):
+            combo.clear()
         self._populate()
