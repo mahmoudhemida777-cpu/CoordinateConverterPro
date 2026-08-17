@@ -7,7 +7,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 PySide6 = pytest.importorskip("PySide6")
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QScrollArea
 
 from core.crs.engine import CRSEngine
 from core.models import PointResult
@@ -23,9 +23,6 @@ def qapp():
 def test_main_window_contains_real_feature_pages(qapp):
     window = MainWindow()
     try:
-        # The production application was renamed from MH GeoSuite Pro to
-        # MH - Coordinate; keep the integration test aligned with the
-        # current product identity used by the executable and release.
         assert window.windowTitle() == "MH - Coordinate"
         assert window.pages["dashboard"].__class__.__name__ == "DashboardPage"
         assert window.pages["survey"].__class__.__name__ == "SurveyPage"
@@ -34,6 +31,9 @@ def test_main_window_contains_real_feature_pages(qapp):
         assert window.pages["map"].__class__.__name__ == "MapPage"
         assert window.pages["history"].__class__.__name__ == "HistoryPage"
         assert window.pages["cad"].table.columnCount() == 6
+        assert hasattr(window.pages["cad"], "preview_btn")
+        assert hasattr(window.pages["cad"], "preview_again_btn")
+        assert window.pages["cad"].findChild(QScrollArea) is not None
     finally:
         window.close()
         window.deleteLater()
@@ -82,3 +82,64 @@ def test_wgs84_to_utm38_and_back():
     assert back[0].status == "SUCCESS"
     assert math.isclose(back[0].tgt_x, point.src_x, abs_tol=1e-6)
     assert math.isclose(back[0].tgt_y, point.src_y, abs_tol=1e-6)
+
+
+def _write_preview_csv(tmp_path):
+    path = tmp_path / "preview_test.csv"
+    path.write_text(
+        "Name,E,N,Z\n"
+        "P1,100.0,200.0,5.0\n"
+        "P2,110.0,210.0,6.0\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _combo_index(combo, text):
+    idx = combo.findText(text)
+    assert idx >= 0, f"Column {text!r} was not detected"
+    return idx
+
+
+def test_cad_preview_applies_manual_parsing_changes(qapp, tmp_path):
+    window = MainWindow()
+    try:
+        cad = window.pages["cad"]
+        path = _write_preview_csv(tmp_path)
+        cad.load_active_file(str(path))
+        assert cad.table.item(0, 2).text() == "100.000"
+        assert cad.table.item(0, 3).text() == "200.000"
+
+        cad.parsing_engine.setCurrentIndex(1)
+        cad.x_column.setCurrentIndex(_combo_index(cad.x_column, "N"))
+        cad.y_column.setCurrentIndex(_combo_index(cad.y_column, "E"))
+        cad.preview_btn.click()
+
+        assert cad.table.item(0, 2).text() == "200.000"
+        assert cad.table.item(0, 3).text() == "100.000"
+        assert "Preview updated" in cad.preview_state.text()
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_cad_preview_applies_axis_order_change(qapp, tmp_path):
+    window = MainWindow()
+    try:
+        cad = window.pages["cad"]
+        path = _write_preview_csv(tmp_path)
+        cad.load_active_file(str(path))
+        cad.axis_yx.setChecked(True)
+        assert cad._preview_dirty is True
+
+        # The table changes only after the explicit PREVIEW action.
+        assert cad.table.item(0, 2).text() == "100.000"
+        assert cad.table.item(0, 3).text() == "200.000"
+
+        cad.preview_again_btn.click()
+        assert cad.table.item(0, 2).text() == "200.000"
+        assert cad.table.item(0, 3).text() == "100.000"
+        assert cad._preview_dirty is False
+    finally:
+        window.close()
+        window.deleteLater()
