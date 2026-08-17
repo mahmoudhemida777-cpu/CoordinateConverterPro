@@ -201,6 +201,33 @@ def test_survey_tools_polygon_area_is_functional(qapp):
         window.deleteLater()
 
 
+def test_survey_tools_layout_is_scrollable_and_non_overlapping(qapp):
+    window = MainWindow()
+    try:
+        survey = window.pages["survey"]
+        scroll = survey.findChild(QScrollArea, "surveyScroll")
+        assert scroll is not None
+        assert scroll.widgetResizable() is True
+        assert survey.x1.minimumHeight() >= 38
+        assert survey.y1.minimumHeight() >= 38
+        assert survey.z1.minimumHeight() >= 38
+        assert survey.x2.minimumHeight() >= 38
+        assert survey.y2.minimumHeight() >= 38
+        assert survey.z2.minimumHeight() >= 38
+        assert survey.result_labels["horizontal"].minimumHeight() >= 34
+        assert survey.result_labels["grade"].minimumHeight() >= 34
+        assert survey.area_input.minimumHeight() >= 38
+        assert survey.area_input.maximumHeight() >= survey.area_input.minimumHeight()
+        survey.resize(700, 420)
+        window.resize(1100, 700)
+        survey.show()
+        qapp.processEvents()
+        assert scroll.verticalScrollBar().maximum() > 0
+    finally:
+        window.close()
+        window.deleteLater()
+
+
 def test_map_display_controls_are_consistent_and_code_colored(qapp):
     window = MainWindow()
     try:
