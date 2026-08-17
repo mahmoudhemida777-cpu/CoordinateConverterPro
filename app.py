@@ -1,5 +1,5 @@
 """
-MH GeoSuite Pro — application entry point.
+MH - Coordinate — application entry point.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout),
     ],
 )
-logger = logging.getLogger("MHGeoSuitePro")
+logger = logging.getLogger("MH-Coordinate")
 
 
 def _smoke_test() -> int:
@@ -58,7 +58,7 @@ def _smoke_test() -> int:
     if not math.isclose(back[0].tgt_y, source.src_y, abs_tol=1e-6):
         raise RuntimeError("Frozen latitude round-trip exceeded tolerance")
 
-    with tempfile.TemporaryDirectory(prefix="mh_geosuite_smoke_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="mh_coordinate_smoke_") as tmp:
         dxf_path = Path(tmp) / "smoke.dxf"
         export_dxf(converted, str(dxf_path))
         if not dxf_path.is_file() or dxf_path.stat().st_size <= 0:
@@ -73,7 +73,7 @@ def main() -> int:
     if "--smoke-test" in sys.argv:
         return _smoke_test()
 
-    logger.info("Starting MH GeoSuite Pro")
+    logger.info("Starting MH - Coordinate")
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox, QSplashScreen
         from PySide6.QtCore import Qt, QTimer
@@ -85,9 +85,9 @@ def main() -> int:
         raise
 
     app = QApplication(sys.argv)
-    app.setApplicationName("MH GeoSuite Pro")
+    app.setApplicationName("MH - Coordinate")
     app.setApplicationVersion(APP_VERSION)
-    app.setOrganizationName("MHGeoSuitePro")
+    app.setOrganizationName("MH-Coordinate")
     app.setWindowIcon(app_icon())
 
     splash = QSplashScreen(
@@ -120,7 +120,7 @@ def main() -> int:
         apply_cad_page_layout(window)
 
         splash.showMessage(
-            "Opening MH GeoSuite Pro...",
+            "Opening MH - Coordinate...",
             Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
             Qt.GlobalColor.white,
         )
@@ -142,7 +142,7 @@ def main() -> int:
         tag, _url = update
         answer = QMessageBox.question(
             window,
-            "MH GeoSuite Pro Update",
+            "MH - Coordinate Update",
             f"A new version ({tag}) is available. Update now?\n\nThe program will close, install the update, and restart automatically.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
