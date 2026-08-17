@@ -23,7 +23,10 @@ def qapp():
 def test_main_window_contains_real_feature_pages(qapp):
     window = MainWindow()
     try:
-        assert window.windowTitle() == "MH GeoSuite Pro"
+        # The production application was renamed from MH GeoSuite Pro to
+        # MH - Coordinate; keep the integration test aligned with the
+        # current product identity used by the executable and release.
+        assert window.windowTitle() == "MH - Coordinate"
         assert window.pages["dashboard"].__class__.__name__ == "DashboardPage"
         assert window.pages["survey"].__class__.__name__ == "SurveyPage"
         assert window.pages["cad"].__class__.__name__ == "CadPage"
