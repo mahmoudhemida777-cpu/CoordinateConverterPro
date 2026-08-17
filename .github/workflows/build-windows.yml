@@ -37,38 +37,38 @@ jobs:
       - name: Run full test suite
         run: python -m pytest -q
 
-      - name: Generate MH GeoSuite Pro branded Windows icon
+      - name: Generate MH - Coordinate branded Windows icon
         run: python tools/generate_icon.py
 
       - name: Install PyInstaller
         run: python -m pip install -U pyinstaller
 
-      - name: Build MH GeoSuite Pro - standalone EXE
+      - name: Build MH - Coordinate - standalone EXE
         run: |
           pyinstaller `
             --noconfirm `
             --clean `
             --onefile `
             --windowed `
-            --name MH_GeoSuite_Pro `
+            --name MH_Coordinate `
             --icon resources/icon.ico `
             app.py
 
       - name: Verify standalone EXE exists
         shell: pwsh
         run: |
-          $exe = "dist\MH_GeoSuite_Pro.exe"
+          $exe = "dist\MH_Coordinate.exe"
           if (-not (Test-Path $exe)) {
             Write-Error "Standalone EXE was not created: $exe"
             exit 1
           }
-          Write-Host "MH GeoSuite Pro standalone EXE successfully created:"
+          Write-Host "MH - Coordinate standalone EXE successfully created:"
           Get-Item $exe
 
       - name: Smoke test frozen EXE imports
         shell: pwsh
         run: |
-          $exe = Resolve-Path "dist\MH_GeoSuite_Pro.exe"
+          $exe = Resolve-Path "dist\MH_Coordinate.exe"
           $p = Start-Process -FilePath $exe -ArgumentList "--smoke-test" -PassThru -Wait
           if ($p.ExitCode -ne 0) {
             Write-Error "Frozen EXE smoke test failed with exit code $($p.ExitCode)"
@@ -80,15 +80,15 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path "dist\MH_GeoSuite_Pro.exe" `
-            -DestinationPath "MH_GeoSuite_Pro-Windows.zip" `
+            -Path "dist\MH_Coordinate.exe" `
+            -DestinationPath "MH_Coordinate-Windows.zip" `
             -Force
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: MH-GeoSuite-Pro-Windows
-          path: MH_GeoSuite_Pro-Windows.zip
+          name: MH-Coordinate-Windows
+          path: MH_Coordinate-Windows.zip
           if-no-files-found: error
 
       - name: Publish rolling Latest release for automatic updates
@@ -101,20 +101,20 @@ jobs:
 
           gh release view latest 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create latest --target main --title "MH GeoSuite Pro v$version" --notes "Rolling release used by the in-app automatic updater."
+            gh release create latest --target main --title "MH - Coordinate v$version" --notes "Rolling release used by the in-app automatic updater."
           } else {
-            gh release edit latest --title "MH GeoSuite Pro v$version" --notes "Rolling release used by the in-app automatic updater."
+            gh release edit latest --title "MH - Coordinate v$version" --notes "Rolling release used by the in-app automatic updater."
           }
 
           # Replace the fixed updater asset explicitly instead of relying on
           # `gh release upload --clobber`, which can return HTTP 404 for an
           # existing asset on a rolling release.
-          gh release delete-asset latest "MH_GeoSuite_Pro-Windows.zip" --yes 2>$null
+          gh release delete-asset latest "MH_Coordinate-Windows.zip" --yes 2>$null
           if ($LASTEXITCODE -ne 0) {
             Write-Host "No previous rolling Windows asset to delete."
           }
 
-          gh release upload latest "MH_GeoSuite_Pro-Windows.zip"
+          gh release upload latest "MH_Coordinate-Windows.zip"
 
       # Keep the Windows release pipeline tied to the same tested commit.
       # This marker also forces a fresh release run whenever the workflow is repaired.
