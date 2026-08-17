@@ -4,65 +4,79 @@ import math
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QGroupBox, QMessageBox, QGridLayout,
+    QGroupBox, QMessageBox, QGridLayout, QScrollArea, QSizePolicy,
 )
 
 
 class SurveyPage(QWidget):
-    """Professional COGO survey calculations with a consistent responsive UI."""
+    """Professional COGO survey calculations with a robust responsive layout."""
 
     def __init__(self) -> None:
         super().__init__()
-        root = QVBoxLayout(self)
-        root.setContentsMargins(24, 18, 24, 22)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea(self)
+        scroll.setObjectName("surveyScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        outer.addWidget(scroll, 1)
+
+        content = QWidget()
+        content.setObjectName("surveyContent")
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        scroll.setWidget(content)
+
+        root = QVBoxLayout(content)
+        root.setContentsMargins(24, 18, 24, 24)
         root.setSpacing(14)
 
         title = QLabel("SURVEY TOOLS — COGO / FIELD CALCULATIONS")
         title.setObjectName("pageTitle")
         root.addWidget(title)
+
         sub = QLabel(
             "Functional survey calculations: inverse, coordinate deltas, bearing/azimuth, slope, grade and polygon area."
         )
+        sub.setObjectName("pageSubtitle")
         sub.setWordWrap(True)
         root.addWidget(sub)
 
-        box = QGroupBox("1  TWO-POINT INVERSE / COGO")
-        form = QGridLayout(box)
-        form.setContentsMargins(18, 22, 18, 18)
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(10)
-        form.setColumnStretch(1, 1)
-        form.setColumnStretch(3, 1)
-        fields = [
-            ("Point 1 — Easting / X", "x1"),
-            ("Point 1 — Northing / Y", "y1"),
-            ("Point 1 — Elevation / Z", "z1"),
-            ("Point 2 — Easting / X", "x2"),
-            ("Point 2 — Northing / Y", "y2"),
-            ("Point 2 — Elevation / Z", "z2"),
-        ]
-        for i, (label, attr) in enumerate(fields):
-            edit = QLineEdit("0" if attr in {"z1", "z2"} else "")
-            edit.setPlaceholderText("Enter numeric value")
-            edit.setMinimumHeight(36)
-            edit.setMaximumHeight(40)
-            setattr(self, attr, edit)
-            r, c = divmod(i, 2)
-            form.addWidget(QLabel(label), r, c * 2)
-            form.addWidget(edit, r, c * 2 + 1)
+        inverse = QGroupBox("1  TWO-POINT INVERSE / COGO")
+        inverse.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        inverse_layout = QVBoxLayout(inverse)
+        inverse_layout.setContentsMargins(18, 24, 18, 18)
+        inverse_layout.setSpacing(14)
+
+        points_row = QHBoxLayout()
+        points_row.setSpacing(14)
+        inverse_layout.addLayout(points_row)
+
+        self.x1, self.y1, self.z1 = self._create_point_panel("POINT 1")
+        self.x2, self.y2, self.z2 = self._create_point_panel("POINT 2")
+
+        p1_box = self._point_box("POINT 1", self.x1, self.y1, self.z1)
+        p2_box = self._point_box("POINT 2", self.x2, self.y2, self.z2)
+        points_row.addWidget(p1_box, 1)
+        points_row.addWidget(p2_box, 1)
+
         calc = QPushButton("CALCULATE INVERSE")
         calc.setObjectName("primaryButton")
-        calc.setMinimumHeight(40)
-        calc.setMaximumHeight(42)
+        calc.setMinimumHeight(42)
+        calc.setMaximumHeight(44)
         calc.clicked.connect(self._calculate)
-        form.addWidget(calc, 3, 0, 1, 4)
-        root.addWidget(box)
+        inverse_layout.addWidget(calc)
+        root.addWidget(inverse)
 
         results = QGroupBox("2  CALCULATION RESULTS")
+        results.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         rg = QGridLayout(results)
-        rg.setContentsMargins(18, 22, 18, 18)
-        rg.setHorizontalSpacing(16)
-        rg.setVerticalSpacing(8)
+        rg.setContentsMargins(18, 24, 18, 18)
+        rg.setHorizontalSpacing(14)
+        rg.setVerticalSpacing(10)
         rg.setColumnStretch(0, 1)
         rg.setColumnStretch(1, 1)
         self.result_labels = {}
@@ -76,42 +90,89 @@ class SurveyPage(QWidget):
             ("ΔZ", "dz"),
             ("Grade", "grade"),
         ]
-        for i, (label, key) in enumerate(result_items):
+        for i, (label_text, key) in enumerate(result_items):
             r, c = divmod(i, 2)
-            rg.addWidget(QLabel(label), r * 2, c)
+            cell = QWidget()
+            cell_layout = QHBoxLayout(cell)
+            cell_layout.setContentsMargins(10, 6, 10, 6)
+            cell_layout.setSpacing(10)
+            label = QLabel(label_text)
+            label.setMinimumWidth(135)
             value = QLabel("—")
             value.setObjectName("surveyResultValue")
             value.setMinimumHeight(34)
+            value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             value.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            rg.addWidget(value, r * 2 + 1, c)
+            cell_layout.addWidget(label)
+            cell_layout.addWidget(value, 1)
+            rg.addWidget(cell, r, c)
             self.result_labels[key] = value
         root.addWidget(results)
 
         area_box = QGroupBox("3  POLYGON AREA")
+        area_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         ag = QVBoxLayout(area_box)
-        ag.setContentsMargins(18, 22, 18, 18)
+        ag.setContentsMargins(18, 24, 18, 18)
         ag.setSpacing(10)
+
+        area_label = QLabel("Enter polygon vertices in order (clockwise or counter-clockwise):")
+        area_label.setWordWrap(True)
+        ag.addWidget(area_label)
+
         self.area_input = QLineEdit()
         self.area_input.setPlaceholderText("x1,y1; x2,y2; x3,y3; ...")
-        self.area_input.setMinimumHeight(36)
-        self.area_input.setMaximumHeight(40)
-        ag.addWidget(QLabel("Enter polygon vertices in order (clockwise or counter-clockwise):"))
+        self.area_input.setMinimumHeight(38)
+        self.area_input.setMaximumHeight(42)
         ag.addWidget(self.area_input)
+
         area_row = QHBoxLayout()
-        area_row.setSpacing(12)
+        area_row.setSpacing(14)
         area_btn = QPushButton("CALCULATE AREA")
         area_btn.setObjectName("primaryButton")
-        area_btn.setMinimumHeight(40)
-        area_btn.setMaximumHeight(42)
+        area_btn.setMinimumHeight(42)
+        area_btn.setMaximumHeight(44)
         area_btn.clicked.connect(self._area)
-        area_row.addWidget(area_btn)
+        area_row.addWidget(area_btn, 0)
+
         self.area_result = QLabel("Area: —")
         self.area_result.setObjectName("surveyResultValue")
-        self.area_result.setMinimumHeight(34)
+        self.area_result.setMinimumHeight(36)
+        self.area_result.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         area_row.addWidget(self.area_result, 1)
         ag.addLayout(area_row)
         root.addWidget(area_box)
         root.addStretch(1)
+
+    @staticmethod
+    def _new_input(default: str = "") -> QLineEdit:
+        edit = QLineEdit(default)
+        edit.setPlaceholderText("Enter numeric value")
+        edit.setMinimumHeight(38)
+        edit.setMaximumHeight(42)
+        edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        return edit
+
+    def _create_point_panel(self, _title: str):
+        return self._new_input(), self._new_input(), self._new_input("0")
+
+    @staticmethod
+    def _point_box(title: str, x: QLineEdit, y: QLineEdit, z: QLineEdit) -> QGroupBox:
+        box = QGroupBox(title)
+        box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        grid = QGridLayout(box)
+        grid.setContentsMargins(12, 22, 12, 12)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(1, 1)
+        for row, (text, edit) in enumerate((
+            ("Easting / X", x),
+            ("Northing / Y", y),
+            ("Elevation / Z", z),
+        )):
+            label = QLabel(text)
+            grid.addWidget(label, row, 0)
+            grid.addWidget(edit, row, 1)
+        return box
 
     def _numbers(self):
         try:
@@ -141,9 +202,14 @@ class SurveyPage(QWidget):
             azimuth = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
             grade = (dz / horizontal * 100.0) if horizontal > 1e-12 else 0.0
             values = {
-                "horizontal": f"{horizontal:.3f}", "distance": f"{distance:.3f}",
-                "azimuth": f"{azimuth:.6f}°", "bearing": self._bearing(dx, dy),
-                "dx": f"{dx:.3f}", "dy": f"{dy:.3f}", "dz": f"{dz:.3f}", "grade": f"{grade:.3f}%",
+                "horizontal": f"{horizontal:.3f}",
+                "distance": f"{distance:.3f}",
+                "azimuth": f"{azimuth:.6f}°",
+                "bearing": self._bearing(dx, dy),
+                "dx": f"{dx:.3f}",
+                "dy": f"{dy:.3f}",
+                "dz": f"{dz:.3f}",
+                "grade": f"{grade:.3f}%",
             }
             for key, value in values.items():
                 self.result_labels[key].setText(value)
