@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import math
+import re
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QGroupBox, QMessageBox, QGridLayout, QScrollArea, QSizePolicy,
+    QGroupBox, QMessageBox, QGridLayout, QScrollArea, QSizePolicy, QPlainTextEdit,
 )
 
 
@@ -52,7 +53,6 @@ class SurveyPage(QWidget):
         inverse_layout.setContentsMargins(18, 24, 18, 18)
         inverse_layout.setSpacing(14)
 
-        # Stack the two point panels vertically to prevent cramped controls and overlap.
         points_column = QVBoxLayout()
         points_column.setSpacing(12)
         inverse_layout.addLayout(points_column)
@@ -114,13 +114,22 @@ class SurveyPage(QWidget):
         ag.setContentsMargins(18, 24, 18, 18)
         ag.setSpacing(10)
 
-        area_label = QLabel("Enter polygon vertices in order (clockwise or counter-clockwise):")
+        area_label = QLabel(
+            "Enter 3 or more polygon vertices in order (clockwise or counter-clockwise). "
+            "You may enter X,Y pairs separated by commas, semicolons, spaces, or new lines."
+        )
         area_label.setWordWrap(True)
         ag.addWidget(area_label)
 
-        self.area_input = QLineEdit()
-        self.area_input.setPlaceholderText("x1,y1; x2,y2; x3,y3; ...")
-        self.area_input.setMinimumHeight(38)
+        self.area_input = QPlainTextEdit()
+        self.area_input.setPlaceholderText(
+            "Examples:\n"
+            "689283.775,2749714.932; 688881.822,2750269.766; 688182.670,2749763.261; 688943.137,2749262.214\n"
+            "or simply: X1,Y1,X2,Y2,X3,Y3,..."
+        )
+        self.area_input.setMinimumHeight(72)
+        self.area_input.setMaximumHeight(120)
+        self.area_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         ag.addWidget(self.area_input)
 
         area_row = QHBoxLayout()
@@ -208,21 +217,25 @@ class SurveyPage(QWidget):
 
     def _area(self) -> None:
         try:
-            pts = []
-            for token in self.area_input.text().split(';'):
-                token = token.strip()
-                if not token:
-                    continue
-                parts = [v.strip() for v in token.split(',')]
-                if len(parts) != 2:
-                    raise ValueError
-                pts.append((float(parts[0]), float(parts[1])))
+            text = self.area_input.toPlainText().strip()
+            # Accept practical survey entry styles: X,Y pairs separated by
+            # semicolons, commas, spaces, tabs, or line breaks. Extracting the
+            # numeric tokens also accepts flat X1,Y1,X2,Y2,... coordinate lists.
+            tokens = re.findall(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?", text)
+            if len(tokens) < 6 or len(tokens) % 2 != 0:
+                raise ValueError
+            pts = [(float(tokens[i]), float(tokens[i + 1])) for i in range(0, len(tokens), 2)]
             if len(pts) < 3:
                 raise ValueError
-            area = abs(sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts))) / 2.0)
-            self.area_result.setText(f"Area: {area:.3f} square units")
+            area = abs(sum(
+                pts[i][0] * pts[(i + 1) % len(pts)][1]
+                - pts[(i + 1) % len(pts)][0] * pts[i][1]
+                for i in range(len(pts))
+            ) / 2.0)
+            self.area_result.setText(f"Area: {area:.3f} square units — {len(pts)} vertices")
         except ValueError:
-            QMessageBox.warning(self, "Invalid Polygon", "Use at least 3 vertices: x,y; x,y; x,y")
-
-
-# Release validation marker: Survey Tools-only production build.
+            QMessageBox.warning(
+                self,
+                "Invalid Polygon",
+                "Enter 3 or more vertices as X,Y pairs. Example: X1,Y1; X2,Y2; X3,Y3; X4,Y4; ..."
+            )
