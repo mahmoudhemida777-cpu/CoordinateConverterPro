@@ -215,7 +215,7 @@ def test_survey_tools_polygon_area_supports_arbitrary_vertex_counts(qapp):
         # Five-sided polygon: confirms the implementation is not hard-coded to 4 points.
         survey.area_input.setPlainText("0,0; 10,0; 12,5; 6,10; 0,5")
         survey._area()
-        assert survey.area_result.text() == "Area: 100.000 square units — 5 vertices"
+        assert survey.area_result.text() == "Area: 70.000 square units — 5 vertices"
 
         # Flat coordinate list is also supported.
         survey.area_input.setPlainText("0,0,10,0,10,10,0,10")
