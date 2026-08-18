@@ -52,9 +52,7 @@ class SurveyPage(QWidget):
         inverse_layout.setContentsMargins(18, 24, 18, 18)
         inverse_layout.setSpacing(14)
 
-        # Stack the two point panels vertically. This prevents cramped controls
-        # and overlap at the normal application window width while keeping the
-        # full page readable without relying on horizontal compression.
+        # Stack the two point panels vertically to prevent cramped controls and overlap.
         points_column = QVBoxLayout()
         points_column.setSpacing(12)
         inverse_layout.addLayout(points_column)
@@ -225,3 +223,6 @@ class SurveyPage(QWidget):
             self.area_result.setText(f"Area: {area:.3f} square units")
         except ValueError:
             QMessageBox.warning(self, "Invalid Polygon", "Use at least 3 vertices: x,y; x,y; x,y")
+
+
+# Release validation marker: Survey Tools-only production build.
