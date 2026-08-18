@@ -28,8 +28,6 @@ class SurveyPage(QWidget):
         content = QWidget()
         content.setObjectName("surveyContent")
         content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        # Explicit page-local stylesheet: the application-wide QLineEdit rule
-        # must not reduce the Survey Tools input touch target below 38 px.
         content.setStyleSheet("QLineEdit { min-height: 38px; }")
         scroll.setWidget(content)
 
@@ -54,17 +52,17 @@ class SurveyPage(QWidget):
         inverse_layout.setContentsMargins(18, 24, 18, 18)
         inverse_layout.setSpacing(14)
 
-        points_row = QHBoxLayout()
-        points_row.setSpacing(14)
-        inverse_layout.addLayout(points_row)
+        # Stack the two point panels vertically. This prevents cramped controls
+        # and overlap at the normal application window width while keeping the
+        # full page readable without relying on horizontal compression.
+        points_column = QVBoxLayout()
+        points_column.setSpacing(12)
+        inverse_layout.addLayout(points_column)
 
         self.x1, self.y1, self.z1 = self._create_point_panel("POINT 1")
         self.x2, self.y2, self.z2 = self._create_point_panel("POINT 2")
-
-        p1_box = self._point_box("POINT 1", self.x1, self.y1, self.z1)
-        p2_box = self._point_box("POINT 2", self.x2, self.y2, self.z2)
-        points_row.addWidget(p1_box, 1)
-        points_row.addWidget(p2_box, 1)
+        points_column.addWidget(self._point_box("POINT 1", self.x1, self.y1, self.z1))
+        points_column.addWidget(self._point_box("POINT 2", self.x2, self.y2, self.z2))
 
         calc = QPushButton("CALCULATE INVERSE")
         calc.setObjectName("primaryButton")
@@ -125,9 +123,6 @@ class SurveyPage(QWidget):
         self.area_input = QLineEdit()
         self.area_input.setPlaceholderText("x1,y1; x2,y2; x3,y3; ...")
         self.area_input.setMinimumHeight(38)
-        # Do not cap the maximum height: the page-local stylesheet adds
-        # vertical padding to the minimum height, so a 42 px maximum can
-        # become smaller than the effective minimum and fail the layout contract.
         ag.addWidget(self.area_input)
 
         area_row = QHBoxLayout()
@@ -170,11 +165,7 @@ class SurveyPage(QWidget):
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(8)
         grid.setColumnStretch(1, 1)
-        for row, (text, edit) in enumerate((
-            ("Easting / X", x),
-            ("Northing / Y", y),
-            ("Elevation / Z", z),
-        )):
+        for row, (text, edit) in enumerate((("Easting / X", x), ("Northing / Y", y), ("Elevation / Z", z))):
             label = QLabel(text)
             grid.addWidget(label, row, 0)
             grid.addWidget(edit, row, 1)
@@ -208,14 +199,9 @@ class SurveyPage(QWidget):
             azimuth = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
             grade = (dz / horizontal * 100.0) if horizontal > 1e-12 else 0.0
             values = {
-                "horizontal": f"{horizontal:.3f}",
-                "distance": f"{distance:.3f}",
-                "azimuth": f"{azimuth:.6f}°",
-                "bearing": self._bearing(dx, dy),
-                "dx": f"{dx:.3f}",
-                "dy": f"{dy:.3f}",
-                "dz": f"{dz:.3f}",
-                "grade": f"{grade:.3f}%",
+                "horizontal": f"{horizontal:.3f}", "distance": f"{distance:.3f}",
+                "azimuth": f"{azimuth:.6f}°", "bearing": self._bearing(dx, dy),
+                "dx": f"{dx:.3f}", "dy": f"{dy:.3f}", "dz": f"{dz:.3f}", "grade": f"{grade:.3f}%",
             }
             for key, value in values.items():
                 self.result_labels[key].setText(value)
@@ -235,11 +221,7 @@ class SurveyPage(QWidget):
                 pts.append((float(parts[0]), float(parts[1])))
             if len(pts) < 3:
                 raise ValueError
-            area = abs(sum(
-                pts[i][0] * pts[(i + 1) % len(pts)][1] -
-                pts[(i + 1) % len(pts)][0] * pts[i][1]
-                for i in range(len(pts))
-            ) / 2.0)
+            area = abs(sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts))) / 2.0)
             self.area_result.setText(f"Area: {area:.3f} square units")
         except ValueError:
             QMessageBox.warning(self, "Invalid Polygon", "Use at least 3 vertices: x,y; x,y; x,y")
