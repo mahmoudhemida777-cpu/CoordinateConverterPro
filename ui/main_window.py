@@ -17,11 +17,7 @@ from ui.theme import apply_theme, preferred_font, _TRANSLATIONS
 
 APP_NAME="MH - Coordinate"
 SIDEBAR_ITEMS=[
-    ("dashboard","Dashboard",QStyle.StandardPixmap.SP_ComputerIcon),("import","Import",QStyle.StandardPixmap.SP_DialogOpenButton),
-    ("converter","CRS Converter",QStyle.StandardPixmap.SP_BrowserReload),("survey","Survey Tools",QStyle.StandardPixmap.SP_FileDialogDetailedView),
-    ("cad","Civil / CAD",QStyle.StandardPixmap.SP_DesktopIcon),("batch","Batch Converter",QStyle.StandardPixmap.SP_DialogApplyButton),
-    ("map","Map",QStyle.StandardPixmap.SP_FileDialogContentsView),("history","History",QStyle.StandardPixmap.SP_FileDialogListView),
-    ("settings","Settings",QStyle.StandardPixmap.SP_FileDialogDetailedView),("about","About",QStyle.StandardPixmap.SP_MessageBoxInformation),
+    ("dashboard","Dashboard",QStyle.StandardPixmap.SP_ComputerIcon),("import","Import",QStyle.StandardPixmap.SP_DialogOpenButton),("converter","CRS Converter",QStyle.StandardPixmap.SP_BrowserReload),("survey","Survey Tools",QStyle.StandardPixmap.SP_FileDialogDetailedView),("cad","Civil / CAD",QStyle.StandardPixmap.SP_DesktopIcon),("batch","Batch Converter",QStyle.StandardPixmap.SP_DialogApplyButton),("map","Map",QStyle.StandardPixmap.SP_FileDialogContentsView),("history","History",QStyle.StandardPixmap.SP_FileDialogListView),("settings","Settings",QStyle.StandardPixmap.SP_FileDialogDetailedView),("about","About",QStyle.StandardPixmap.SP_MessageBoxInformation),
 ]
 
 class MainWindow(QMainWindow):
@@ -35,56 +31,46 @@ class MainWindow(QMainWindow):
         for key,label,pix in SIDEBAR_ITEMS:
             item=QListWidgetItem(self.style().standardIcon(pix),tr(label));item.setData(Qt.ItemDataRole.UserRole,key);item.setData(Qt.ItemDataRole.UserRole+1,label);item.setSizeHint(QSize(214,45));self.sidebar.addItem(item)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_changed)
-        right=QWidget();right_layout=QVBoxLayout(right);right_layout.setContentsMargins(0,0,0,0);right_layout.setSpacing(0)
-        self.workspace_banner=QLabel("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard");self.workspace_banner.setObjectName("workspaceBanner");right_layout.addWidget(self.workspace_banner)
+        right=QWidget();right_layout=QVBoxLayout(right);right_layout.setContentsMargins(0,0,0,0);right_layout.setSpacing(0);self.workspace_banner=QLabel("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard");self.workspace_banner.setObjectName("workspaceBanner");right_layout.addWidget(self.workspace_banner)
         self.stack=QStackedWidget();self.pages={"dashboard":DashboardPage(),"import":ImportPage(),"converter":ConverterPage(),"survey":SurveyPage(),"cad":CadPage(),"batch":BatchPage(),"map":MapPage(),"history":HistoryPage(),"settings":SettingsPage(),"about":AboutPage()}
         for key,_,_ in SIDEBAR_ITEMS:self.stack.addWidget(self.pages[key])
-        self.pages["dashboard"].file_selected.connect(self._set_active_file);self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder);self.pages["batch"].batch_completed.connect(self._on_batch_completed);self.pages["history"].file_reloaded.connect(self._reload_history_file)
+        self.pages["dashboard"].file_selected.connect(self._set_active_file);self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder);self.pages["import"].file_loaded.connect(self._set_active_file);self.pages["batch"].batch_completed.connect(self._on_batch_completed);self.pages["history"].file_reloaded.connect(self._reload_history_file)
         right_layout.addWidget(self.stack);layout.addWidget(self.sidebar);layout.addWidget(right);self.sidebar.setCurrentRow(0);self.statusBar().showMessage(tr("Ready"));register_language_listener(self._on_language_changed)
 
     def _set_app_direction(self):
         app=QApplication.instance()
         if app is not None:app.setLayoutDirection(Qt.LayoutDirection.RightToLeft if current_language()=="ar" else Qt.LayoutDirection.LeftToRight)
-
     def _translate_text(self,text:str)->str:
-        if current_language()=="ar": return tr(text)
-        ar=_TRANSLATIONS.get("ar",{})
-        reverse={value:key for key,value in ar.items()}
-        return reverse.get(text,text)
-
+        if current_language()=="ar":return tr(text)
+        reverse={value:key for key,value in _TRANSLATIONS.get("ar",{}).items()};return reverse.get(text,text)
     def _on_language_changed(self,language:str)->None:
         self._set_app_direction()
         for row,(_,english,_) in enumerate(SIDEBAR_ITEMS):
             if row<self.sidebar.count():self.sidebar.item(row).setText(tr(english))
-        for widget in self.findChildren((QAbstractButton,QLabel,QGroupBox)):
-            key=widget.property("mhTextKey") or widget.text()
-            translated=self._translate_text(str(key))
-            if translated!=widget.text():widget.setText(translated)
+        for widget_type in (QAbstractButton,QLabel,QGroupBox):
+            for widget in self.findChildren(widget_type):
+                key=widget.property("mhTextKey") or widget.text();translated=self._translate_text(str(key))
+                if translated!=widget.text():widget.setText(translated)
         for combo in self.findChildren(QComboBox):
             for index in range(combo.count()):
                 text=combo.itemText(index);key=combo.itemData(index,Qt.ItemDataRole.UserRole+1) or text;translated=self._translate_text(str(key))
                 if translated!=text:combo.setItemText(index,translated)
-
     def _set_workspace_folder(self,folder:str):
         self.workspace_folder=folder;self.workspace_banner.setText(f"PROJECT WORKSPACE: {folder}  |  Shared across all pages")
         for page in self.pages.values():
             setter=getattr(page,"set_workspace_folder",None)
             if callable(setter):setter(folder)
         self.statusBar().showMessage(f"Project Folder: {folder} — shared workspace")
-
     def _set_active_file(self,path:str):
         for key in ("import","converter","cad","batch","map"):
             loader=getattr(self.pages[key],"load_active_file",None)
             if callable(loader):loader(path)
         self.statusBar().showMessage(f"Active File: {path}")
-
     def _reload_history_file(self,path:str):
         self._set_active_file(path);self.sidebar.setCurrentRow(2);self.statusBar().showMessage(f"History file loaded: {path} — ready for further editing/conversion")
-
     def _on_batch_completed(self,output_paths:list,target_crs:str,source_crs:str):
         if output_paths:
             cad=self.pages["cad"];loader=getattr(cad,"_load_batch_converted_xlsx",None)
             if callable(loader) and loader(output_paths[0]):self.statusBar().showMessage(f"Batch result ready for CAD/Civil 3D: {output_paths[0]}")
-
     def _on_sidebar_changed(self,row:int):
         if 0<=row<len(SIDEBAR_ITEMS):self.stack.setCurrentWidget(self.pages[SIDEBAR_ITEMS[row][0]])
