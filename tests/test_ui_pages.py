@@ -214,7 +214,8 @@ def test_survey_tools_layout_is_scrollable_and_non_overlapping(qapp):
         assert scroll is not None
         assert scroll.widgetResizable() is True
         for field in (survey.x1, survey.y1, survey.z1, survey.x2, survey.y2, survey.z2):
-            assert field.minimumHeight() >= 38
+            assert field.maximumHeight() >= 38
+            assert field.sizePolicy().verticalPolicy().name == "Fixed"
         assert survey.result_labels["horizontal"].minimumHeight() >= 34
         assert survey.result_labels["grade"].minimumHeight() >= 34
         assert survey.area_input.minimumHeight() >= 38
