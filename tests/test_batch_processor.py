@@ -21,6 +21,16 @@ def test_find_batch_files_only_supported_extensions(sample_folder):
     assert names == ["a.csv", "b.xlsx", "c.kmz", "d.txt", "e.kml"]
 
 
+def test_find_batch_files_can_include_cad_for_workspace_discovery(sample_folder):
+    root = Path(sample_folder)
+    (root / "survey.dxf").write_text("0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nEOF\n")
+    (root / "drawing.dwg").write_bytes(b"DWG")
+    files = find_batch_files(sample_folder, include_cad=True)
+    names = sorted(f.name for f in files)
+    assert "survey.dxf" in names
+    assert "drawing.dwg" in names
+
+
 def test_run_batch_continues_after_a_failure(sample_folder):
     def process(path: Path) -> FileResult:
         if path.name == "b.xlsx":
