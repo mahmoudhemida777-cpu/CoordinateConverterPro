@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 SUPPORTED_EXTENSIONS = {".kmz", ".kml", ".csv", ".xlsx", ".txt"}
+CAD_EXTENSIONS = {".dxf", ".dwg"}
 OUTPUT_SUFFIX = "_converted.xlsx"
 
 
@@ -37,12 +38,13 @@ class BatchReport:
         return sum(r.status == "WARNING" for r in self.results)
 
 
-def find_batch_files(folder: str) -> List[Path]:
-    """Discover supported survey files recursively, including TXT, case-insensitively."""
+def find_batch_files(folder: str, include_cad: bool = False) -> List[Path]:
+    """Discover survey files recursively; optionally include CAD files for workspace discovery."""
     root = Path(folder).expanduser()
     if not root.exists() or not root.is_dir():
         return []
 
+    allowed = SUPPORTED_EXTENSIONS | CAD_EXTENSIONS if include_cad else SUPPORTED_EXTENSIONS
     found: List[Path] = []
     try:
         for current, dirs, files in os.walk(root, topdown=True, onerror=lambda _e: None):
@@ -54,7 +56,7 @@ def find_batch_files(folder: str) -> List[Path]:
                     continue
                 if lower_name.endswith(OUTPUT_SUFFIX.casefold()):
                     continue
-                if path.suffix.casefold() in SUPPORTED_EXTENSIONS:
+                if path.suffix.casefold() in allowed:
                     try:
                         found.append(path.resolve())
                     except OSError:
@@ -71,7 +73,7 @@ def run_batch(
     process_one: Callable[[Path], FileResult],
     progress_cb: Optional[Callable[[int, int, Path], None]] = None,
 ) -> BatchReport:
-    """Process every discovered file; a failure never stops the batch."""
+    """Process every discovered batch-compatible file; CAD files are not included by default."""
     files = find_batch_files(folder)
     report = BatchReport()
     total = len(files)
