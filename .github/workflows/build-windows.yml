@@ -115,3 +115,4 @@ jobs:
 
       # Release pipeline intentionally runs the full suite before freezing the EXE.
       # This keeps the downloadable Windows build tied to a tested main commit.
+      # Rebuild marker: Arabic layout, CRS picker sizing and CAD recognition hardening.
