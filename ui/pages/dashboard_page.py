@@ -108,7 +108,8 @@ class DashboardPage(QWidget):
         if not self.folder:
             return
         try:
-            files = find_batch_files(self.folder)
+            # Dashboard discovery includes CAD so DXF/DWG can become active workspace files.
+            files = find_batch_files(self.folder, include_cad=True)
         except Exception as exc:
             self.status.setText(f"Scan error: {exc}")
             return
@@ -131,7 +132,7 @@ class DashboardPage(QWidget):
                 self.table.setItem(row, c, item)
         self.files.set_value(str(len(files)))
         self.formats.set_value(str(len(formats)))
-        self.status.setText(f"Scanned: {len(files)} supported file(s) — workspace shared across pages")
+        self.status.setText(f"Scanned: {len(files)} supported coordinate/CAD file(s) — workspace shared across pages")
         if files:
             self.table.setCurrentCell(0, 0)
             self.table.selectRow(0)
