@@ -32,6 +32,7 @@ class ColumnMappingDialog(QDialog):
 
 class ImportPage(QWidget):
     points_imported=Signal(list)
+    file_loaded=Signal(str)
     def __init__(self):
         super().__init__();self.points:list[PointResult]=[];self.active_path=None;self.workspace_folder=None
         layout=QVBoxLayout(self);layout.setContentsMargins(24,24,24,24);layout.setSpacing(12)
@@ -45,7 +46,6 @@ class ImportPage(QWidget):
         self.file_label=QLabel("No file selected");self.file_label.setWordWrap(True);layout.addWidget(self.file_label)
         self.count_label=QLabel("Loaded 0 points | Invalid 0");self.count_label.setObjectName("pageSubtitle");layout.addWidget(self.count_label)
         self.table=QTableWidget(0,4);self.table.setHorizontalHeaderLabels(["Point / Survey Code","X","Y","Z"]);self.table.setAlternatingRowColors(True);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch);layout.addWidget(self.table,1)
-
     def set_workspace_folder(self,folder):self.workspace_folder=folder;self.workspace_bar.set_folder(folder,self.active_path)
     def load_active_file(self,path):
         if path and Path(path).is_file():self.workspace_folder=str(Path(path).parent);self.workspace_bar.set_folder(self.workspace_folder,path);self._import_path(path)
@@ -64,7 +64,7 @@ class ImportPage(QWidget):
     def _import_path(self,path):
         suffix=Path(path).suffix.lower()
         try:
-            if suffix in {".dxf",".dwg"}: points=extract_cad_points(path)
+            if suffix in {".dxf",".dwg"}:points=extract_cad_points(path)
             elif suffix==".kmz":points=kml_parser.parse_kmz_file(path)
             elif suffix==".kml":points=kml_parser.parse_kml_file(path)
             elif suffix==".csv":points=csv_parser.parse_csv_auto(path)
@@ -75,7 +75,7 @@ class ImportPage(QWidget):
         points=list(points or [])
         if not points:QMessageBox.warning(self,"Import","No coordinate points were detected in this file.");return
         invalid=sum(1 for p in points if p.src_x is None or p.src_y is None)
-        self.active_path=path;self.points=points;self.file_label.setText(f"{path} — {len(points)-invalid} valid points");self.count_label.setText(f"Loaded {len(points)-invalid} points | Invalid {invalid}");self._populate_table(points);self.points_imported.emit(points);self.workspace_folder=str(Path(path).parent);self.workspace_bar.set_folder(self.workspace_folder,path)
+        self.active_path=path;self.points=points;self.file_label.setText(f"{path} — {len(points)-invalid} valid points");self.count_label.setText(f"Loaded {len(points)-invalid} points | Invalid {invalid}");self._populate_table(points);self.points_imported.emit(points);self.file_loaded.emit(path);self.workspace_folder=str(Path(path).parent);self.workspace_bar.set_folder(self.workspace_folder,path)
     def _populate_table(self,points):
         self.table.setRowCount(len(points))
         for i,p in enumerate(points):
