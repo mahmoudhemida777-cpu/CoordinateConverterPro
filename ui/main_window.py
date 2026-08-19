@@ -84,16 +84,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.pages = {
-            "dashboard": DashboardPage(),
-            "import": ImportPage(),
-            "converter": ConverterPage(),
-            "survey": SurveyPage(),
-            "cad": CadPage(),
-            "batch": BatchPage(),
-            "map": MapPage(),
-            "history": HistoryPage(),
-            "settings": SettingsPage(),
-            "about": AboutPage(),
+            "dashboard": DashboardPage(), "import": ImportPage(), "converter": ConverterPage(),
+            "survey": SurveyPage(), "cad": CadPage(), "batch": BatchPage(), "map": MapPage(),
+            "history": HistoryPage(), "settings": SettingsPage(), "about": AboutPage(),
         }
         for key, _, _ in SIDEBAR_ITEMS:
             self.stack.addWidget(self.pages[key])
@@ -110,19 +103,13 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(tr("Ready"))
 
         register_language_listener(self._on_language_changed)
-        # Pages are constructed before the listener is registered. Capture their
-        # English source strings once, then immediately apply the selected language.
         self._capture_translation_keys()
         self._on_language_changed(current_language())
 
     def _set_app_direction(self):
         app = QApplication.instance()
         if app is not None:
-            app.setLayoutDirection(
-                Qt.LayoutDirection.RightToLeft
-                if current_language() == "ar"
-                else Qt.LayoutDirection.LeftToRight
-            )
+            app.setLayoutDirection(Qt.LayoutDirection.RightToLeft if current_language() == "ar" else Qt.LayoutDirection.LeftToRight)
 
     def _translate_text(self, text: str) -> str:
         if current_language() == "ar":
@@ -131,17 +118,15 @@ class MainWindow(QMainWindow):
         return reverse.get(text, text)
 
     def _capture_translation_keys(self) -> None:
-        """Register the current English UI text as a stable translation key.
-
-        This centralizes localization for legacy pages that do not explicitly call
-        tr() on every label. It also covers table headers and input placeholders.
-        """
-        widget_types = (QAbstractButton, QLabel, QGroupBox)
-        for widget_type in widget_types:
-            for widget in self.findChildren(widget_type):
-                text = widget.text()
-                if text:
-                    widget.setProperty("mhTextKey", str(text))
+        """Capture source-language text for legacy widgets that predate i18n."""
+        for widget in self.findChildren((QAbstractButton, QLabel)):
+            text = widget.text()
+            if text:
+                widget.setProperty("mhTextKey", str(text))
+        for widget in self.findChildren(QGroupBox):
+            title = widget.title()
+            if title:
+                widget.setProperty("mhTitleKey", str(title))
         for combo in self.findChildren(QComboBox):
             for index in range(combo.count()):
                 text = combo.itemText(index)
@@ -152,7 +137,6 @@ class MainWindow(QMainWindow):
             if placeholder:
                 edit.setProperty("mhPlaceholderKey", placeholder)
         for table in self.findChildren(QTableWidget):
-            header = table.horizontalHeader()
             for index in range(table.columnCount()):
                 item = table.horizontalHeaderItem(index)
                 if item is not None and item.text():
@@ -160,41 +144,36 @@ class MainWindow(QMainWindow):
 
     def _on_language_changed(self, language: str) -> None:
         self._set_app_direction()
-
         for row, (_, english, _) in enumerate(SIDEBAR_ITEMS):
             if row < self.sidebar.count():
                 self.sidebar.item(row).setText(tr(english))
-
-        for widget_type in (QAbstractButton, QLabel, QGroupBox):
-            for widget in self.findChildren(widget_type):
-                key = widget.property("mhTextKey") or widget.text()
-                if key:
-                    widget.setText(self._translate_text(str(key)))
-
+        for widget in self.findChildren((QAbstractButton, QLabel)):
+            key = widget.property("mhTextKey") or widget.text()
+            if key:
+                widget.setText(self._translate_text(str(key)))
+        for widget in self.findChildren(QGroupBox):
+            key = widget.property("mhTitleKey") or widget.title()
+            if key:
+                widget.setTitle(self._translate_text(str(key)))
         for combo in self.findChildren(QComboBox):
             for index in range(combo.count()):
                 key = combo.itemData(index, Qt.ItemDataRole.UserRole + 1) or combo.itemText(index)
                 combo.setItemText(index, self._translate_text(str(key)))
-
         for edit in self.findChildren((QLineEdit, QPlainTextEdit)):
             key = edit.property("mhPlaceholderKey")
             if key:
                 edit.setPlaceholderText(self._translate_text(str(key)))
-
         for table in self.findChildren(QTableWidget):
             for index in range(table.columnCount()):
                 item = table.horizontalHeaderItem(index)
                 if item is not None:
                     key = item.data(Qt.ItemDataRole.UserRole + 2) or item.text()
                     item.setText(self._translate_text(str(key)))
-
         self.statusBar().showMessage(tr("Ready"))
 
     def _set_workspace_folder(self, folder: str):
         self.workspace_folder = folder
-        self.workspace_banner.setText(
-            f"{tr('PROJECT WORKSPACE')}: {folder}  |  {tr('Shared across all pages')}"
-        )
+        self.workspace_banner.setText(f"{tr('PROJECT WORKSPACE')}: {folder}  |  {tr('Shared across all pages')}")
         for page in self.pages.values():
             setter = getattr(page, "set_workspace_folder", None)
             if callable(setter):
@@ -211,18 +190,14 @@ class MainWindow(QMainWindow):
     def _reload_history_file(self, path: str):
         self._set_active_file(path)
         self.sidebar.setCurrentRow(2)
-        self.statusBar().showMessage(
-            f"{tr('History file loaded')}: {path} — {tr('ready for further editing/conversion')}"
-        )
+        self.statusBar().showMessage(f"{tr('History file loaded')}: {path} — {tr('ready for further editing/conversion')}")
 
     def _on_batch_completed(self, output_paths: list, target_crs: str, source_crs: str):
         if output_paths:
             cad = self.pages["cad"]
             loader = getattr(cad, "_load_batch_converted_xlsx", None)
             if callable(loader) and loader(output_paths[0]):
-                self.statusBar().showMessage(
-                    f"{tr('Batch result ready for CAD/Civil 3D')}: {output_paths[0]}"
-                )
+                self.statusBar().showMessage(f"{tr('Batch result ready for CAD/Civil 3D')}: {output_paths[0]}")
 
     def _on_sidebar_changed(self, row: int):
         if 0 <= row < len(SIDEBAR_ITEMS):
