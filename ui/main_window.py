@@ -76,9 +76,7 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
-        self.workspace_banner = QLabel(
-            tr("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard")
-        )
+        self.workspace_banner = QLabel(tr("PROJECT WORKSPACE: Not selected — choose a folder once from Dashboard"))
         self.workspace_banner.setObjectName("workspaceBanner")
         right_layout.addWidget(self.workspace_banner)
 
@@ -119,7 +117,11 @@ class MainWindow(QMainWindow):
 
     def _capture_translation_keys(self) -> None:
         """Capture source-language text for legacy widgets that predate i18n."""
-        for widget in self.findChildren((QAbstractButton, QLabel)):
+        for widget in self.findChildren(QAbstractButton):
+            text = widget.text()
+            if text:
+                widget.setProperty("mhTextKey", str(text))
+        for widget in self.findChildren(QLabel):
             text = widget.text()
             if text:
                 widget.setProperty("mhTextKey", str(text))
@@ -132,7 +134,11 @@ class MainWindow(QMainWindow):
                 text = combo.itemText(index)
                 if text and combo.itemData(index, Qt.ItemDataRole.UserRole + 1) is None:
                     combo.setItemData(index, text, Qt.ItemDataRole.UserRole + 1)
-        for edit in self.findChildren((QLineEdit, QPlainTextEdit)):
+        for edit in self.findChildren(QLineEdit):
+            placeholder = edit.placeholderText()
+            if placeholder:
+                edit.setProperty("mhPlaceholderKey", placeholder)
+        for edit in self.findChildren(QPlainTextEdit):
             placeholder = edit.placeholderText()
             if placeholder:
                 edit.setProperty("mhPlaceholderKey", placeholder)
@@ -147,7 +153,11 @@ class MainWindow(QMainWindow):
         for row, (_, english, _) in enumerate(SIDEBAR_ITEMS):
             if row < self.sidebar.count():
                 self.sidebar.item(row).setText(tr(english))
-        for widget in self.findChildren((QAbstractButton, QLabel)):
+        for widget in self.findChildren(QAbstractButton):
+            key = widget.property("mhTextKey") or widget.text()
+            if key:
+                widget.setText(self._translate_text(str(key)))
+        for widget in self.findChildren(QLabel):
             key = widget.property("mhTextKey") or widget.text()
             if key:
                 widget.setText(self._translate_text(str(key)))
@@ -159,7 +169,11 @@ class MainWindow(QMainWindow):
             for index in range(combo.count()):
                 key = combo.itemData(index, Qt.ItemDataRole.UserRole + 1) or combo.itemText(index)
                 combo.setItemText(index, self._translate_text(str(key)))
-        for edit in self.findChildren((QLineEdit, QPlainTextEdit)):
+        for edit in self.findChildren(QLineEdit):
+            key = edit.property("mhPlaceholderKey")
+            if key:
+                edit.setPlaceholderText(self._translate_text(str(key)))
+        for edit in self.findChildren(QPlainTextEdit):
             key = edit.property("mhPlaceholderKey")
             if key:
                 edit.setPlaceholderText(self._translate_text(str(key)))
