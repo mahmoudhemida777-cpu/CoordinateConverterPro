@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, QSize
+from PySide6.QtCore import Signal, QSize, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QLabel
 
 from core.crs.engine import CRSEngine
+from ui.i18n import tr
 
 
 class CRSPicker(QWidget):
-    """Global CRS search/selection widget backed by PROJ plus project-local CRS presets."""
+    """Responsive CRS search/selection widget with stable row sizing."""
 
     crs_selected = Signal(str, str)
 
@@ -30,49 +31,44 @@ class CRSPicker(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        if label:
-            self.title_label = QLabel(label)
-            self.title_label.setStyleSheet("font-size:12px;font-weight:700;color:#52627A;")
-            layout.addWidget(self.title_label)
+        self.title_label = QLabel(label)
+        self.title_label.setObjectName("crsPickerTitle")
+        self.title_label.setProperty("mhTextKey", label)
+        layout.addWidget(self.title_label)
 
-        # Keep CRS controls visually consistent with the other application pages.
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText(
-            "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."
-        )
-        self.search_box.setFixedHeight(36)
+        self.search_box.setPlaceholderText(tr("Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."))
+        self.search_box.setProperty("mhPlaceholderKey", "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...")
+        self.search_box.setMinimumHeight(38)
         self.search_box.setFont(QFont("Segoe UI", 9))
-        self.search_box.setStyleSheet(
-            "QLineEdit { padding:6px 10px; border:1px solid #C7D0DD; border-radius:6px; "
-            "background:#FFFFFF; color:#172235; }"
-            "QLineEdit:focus { border:1px solid #31527A; }"
-        )
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
 
+        # Exactly five quick rows are shown by default. Fixed row/list heights
+        # prevent the popup/list text from intruding into the selected-status box.
         self.results_list = QListWidget()
-        self.results_list.setMinimumHeight(170)
-        self.results_list.setMaximumHeight(220)
+        self.results_list.setFixedHeight(182)
         self.results_list.setUniformItemSizes(True)
         self.results_list.setSpacing(0)
         self.results_list.setFont(QFont("Segoe UI", 9))
+        self.results_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_list.setStyleSheet(
-            "QListWidget { border:1px solid #C7D0DD; border-radius:6px; background:#FFFFFF; "
-            "padding:2px; }"
-            "QListWidget::item { min-height:30px; padding:5px 8px; border-radius:4px; }"
+            "QListWidget { border:1px solid #C7D0DD; border-radius:6px; background:#FFFFFF; padding:2px; }"
+            "QListWidget::item { min-height:34px; padding:0 8px; border-radius:4px; }"
             "QListWidget::item:selected { background:#E7EEF8; color:#1F3864; font-weight:600; }"
         )
         self.results_list.itemClicked.connect(self._on_item_clicked)
         layout.addWidget(self.results_list)
 
-        self.selected_label = QLabel("No CRS selected")
-        self.selected_label.setMinimumHeight(32)
+        self.selected_label = QLabel(tr("No CRS selected"))
+        self.selected_label.setObjectName("crsSelectedLabel")
+        self.selected_label.setProperty("mhTextKey", "No CRS selected")
+        self.selected_label.setMinimumHeight(38)
+        self.selected_label.setMaximumHeight(52)
         self.selected_label.setWordWrap(True)
-        self.selected_label.setStyleSheet(
-            "color:#1F3864;font-size:9px;font-weight:700;"
-            "background:#F4F6F8;border:1px solid #D6DEE9;border-radius:6px;padding:6px 8px;"
-        )
+        self.selected_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.selected_label)
+        layout.addStretch(1)
 
         self._show_quick_crs()
 
@@ -83,9 +79,9 @@ class CRSPicker(QWidget):
 
     def _add_result(self, code: str, name: str) -> None:
         item = QListWidgetItem(f"{code} — {name}")
-        item.setData(1000, code)
-        item.setData(1001, name)
-        item.setSizeHint(QSize(0, 32))
+        item.setData(Qt.ItemDataRole.UserRole, code)
+        item.setData(Qt.ItemDataRole.UserRole + 1, name)
+        item.setSizeHint(QSize(0, 34))
         self.results_list.addItem(item)
 
     def _on_search(self, text: str) -> None:
@@ -98,10 +94,7 @@ class CRSPicker(QWidget):
             return
 
         normalized = " ".join(query.lower().split())
-        if normalized in {
-            "wgs 84", "wgs84", "wgs 84 geographic", "latitude longitude",
-            "latitude/longitude", "lat long", "lat/lon", "geographic",
-        }:
+        if normalized in {"wgs 84", "wgs84", "wgs 84 geographic", "latitude longitude", "latitude/longitude", "lat long", "lat/lon", "geographic"}:
             self._add_result("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
             self._add_result("EPSG:4979", "WGS 84 — Geographic 3D (Latitude / Longitude / Ellipsoidal Height)")
 
@@ -110,24 +103,26 @@ class CRSPicker(QWidget):
         except Exception:
             results = []
 
-        existing = {self.results_list.item(i).data(1000) for i in range(self.results_list.count())}
-        for r in results:
-            code = r.epsg
+        existing = {self.results_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.results_list.count())}
+        for result in results:
+            code = result.epsg
             if code in existing:
                 continue
-            self._add_result(code, r.name)
+            self._add_result(code, result.name)
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        self.set_selected(str(item.data(1000)), str(item.data(1001)))
+        self.set_selected(str(item.data(Qt.ItemDataRole.UserRole)), str(item.data(Qt.ItemDataRole.UserRole + 1)))
 
     def set_selected(self, epsg: str, name: str) -> None:
         epsg = epsg.strip()
         if ":" not in epsg and epsg != CRSEngine.AMANAH_RIYADH:
             epsg = f"EPSG:{epsg}"
-        self._selected_epsg = epsg.upper() if epsg.startswith("epsg:") else epsg
+        self._selected_epsg = epsg.upper() if epsg.lower().startswith("epsg:") else epsg
         self._selected_name = name
         self.selected_label.setText(f"{self._selected_epsg} — {name}")
+        self.search_box.blockSignals(True)
         self.search_box.setText(f"{name} / {self._selected_epsg}")
+        self.search_box.blockSignals(False)
         self.crs_selected.emit(self._selected_epsg, name)
 
     def selected_epsg(self) -> str | None:
