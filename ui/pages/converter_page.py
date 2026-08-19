@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton
 from core.crs.engine import CRSEngine
 from core.models import PointResult
 from core.parsers import csv_parser,xlsx_parser,kml_parser,txt_parser
+from core.cad_importer import extract_cad_points
 from core.validation.validator import validate_points,validate_zone_consistency
 from core.exporters.xlsx_exporter import export_xlsx
 from core.exporters.csv_exporter import export_csv
@@ -35,12 +36,13 @@ class ConverterPage(QWidget):
     def load_active_file(self,path:str)->None:
         if path and Path(path).is_file(): self.workspace_folder=str(Path(path).parent); self.workspace_bar.set_folder(self.workspace_folder,path); self._load_path(path)
     def _choose_file(self)->None:
-        path,_=QFileDialog.getOpenFileName(self,tr("Choose File"),self.workspace_folder or "","Supported files (*.kmz *.kml *.csv *.xlsx *.txt);;All files (*.*)");
+        path,_=QFileDialog.getOpenFileName(self,tr("Choose File"),self.workspace_folder or "","Supported files (*.kmz *.kml *.dxf *.dwg *.csv *.xlsx *.txt);;CAD (*.dxf *.dwg);;All files (*.*)")
         if path:self._load_path(path)
     def _load_path(self,path:str)->None:
         suffix=Path(path).suffix.lower()
         try:
-            if suffix==".kmz": points=kml_parser.parse_kmz_file(path)
+            if suffix in {".dxf",".dwg"}: points=extract_cad_points(path)
+            elif suffix==".kmz": points=kml_parser.parse_kmz_file(path)
             elif suffix==".kml": points=kml_parser.parse_kml_file(path)
             elif suffix==".txt": points=txt_parser.parse_txt(path)
             elif suffix==".csv":
@@ -53,7 +55,7 @@ class ConverterPage(QWidget):
                 points=xlsx_parser.parse_xlsx(path,xlsx_parser.ColumnMapping(**dlg.result_mapping()))
             else: raise ValueError(f"Unsupported file type: {suffix}")
         except Exception as exc: QMessageBox.critical(self,"Import Error",str(exc)); return
-        self.source_points=points; self.result_points=[]; self.current_file=path; self.file_label.setText(f"{Path(path).name} — {len(points)} points loaded")
+        points=list(points or []); self.source_points=points; self.result_points=[]; self.current_file=path; self.file_label.setText(f"{Path(path).name} — {len(points)} points loaded")
         if suffix in {".kml",".kmz"}: self.source_picker.set_selected("EPSG:4326","WGS 84 — Geographic 2D (Latitude / Longitude)")
         [x.setEnabled(False) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn,self.export_txt_btn)]
     def _run_conversion(self)->None:
