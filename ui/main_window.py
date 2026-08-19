@@ -12,13 +12,11 @@ from ui.pages.map_page import MapPage
 from ui.pages.history_page import HistoryPage
 from ui.pages.settings_page import SettingsPage
 from ui.pages.about_page import AboutPage
-from ui.i18n import tr, set_language, register_language_listener, current_language
-from ui.theme import apply_theme, preferred_font, _TRANSLATIONS
+from ui.i18n import tr, set_language, register_language_listener, current_language, _TRANSLATIONS
+from ui.theme import apply_theme, preferred_font
 
 APP_NAME="MH - Coordinate"
-SIDEBAR_ITEMS=[
-    ("dashboard","Dashboard",QStyle.StandardPixmap.SP_ComputerIcon),("import","Import",QStyle.StandardPixmap.SP_DialogOpenButton),("converter","CRS Converter",QStyle.StandardPixmap.SP_BrowserReload),("survey","Survey Tools",QStyle.StandardPixmap.SP_FileDialogDetailedView),("cad","Civil / CAD",QStyle.StandardPixmap.SP_DesktopIcon),("batch","Batch Converter",QStyle.StandardPixmap.SP_DialogApplyButton),("map","Map",QStyle.StandardPixmap.SP_FileDialogContentsView),("history","History",QStyle.StandardPixmap.SP_FileDialogListView),("settings","Settings",QStyle.StandardPixmap.SP_FileDialogDetailedView),("about","About",QStyle.StandardPixmap.SP_MessageBoxInformation),
-]
+SIDEBAR_ITEMS=[("dashboard","Dashboard",QStyle.StandardPixmap.SP_ComputerIcon),("import","Import",QStyle.StandardPixmap.SP_DialogOpenButton),("converter","CRS Converter",QStyle.StandardPixmap.SP_BrowserReload),("survey","Survey Tools",QStyle.StandardPixmap.SP_FileDialogDetailedView),("cad","Civil / CAD",QStyle.StandardPixmap.SP_DesktopIcon),("batch","Batch Converter",QStyle.StandardPixmap.SP_DialogApplyButton),("map","Map",QStyle.StandardPixmap.SP_FileDialogContentsView),("history","History",QStyle.StandardPixmap.SP_FileDialogListView),("settings","Settings",QStyle.StandardPixmap.SP_FileDialogDetailedView),("about","About",QStyle.StandardPixmap.SP_MessageBoxInformation)]
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -36,7 +34,6 @@ class MainWindow(QMainWindow):
         for key,_,_ in SIDEBAR_ITEMS:self.stack.addWidget(self.pages[key])
         self.pages["dashboard"].file_selected.connect(self._set_active_file);self.pages["dashboard"].folder_selected.connect(self._set_workspace_folder);self.pages["import"].file_loaded.connect(self._set_active_file);self.pages["batch"].batch_completed.connect(self._on_batch_completed);self.pages["history"].file_reloaded.connect(self._reload_history_file)
         right_layout.addWidget(self.stack);layout.addWidget(self.sidebar);layout.addWidget(right);self.sidebar.setCurrentRow(0);self.statusBar().showMessage(tr("Ready"));register_language_listener(self._on_language_changed)
-
     def _set_app_direction(self):
         app=QApplication.instance()
         if app is not None:app.setLayoutDirection(Qt.LayoutDirection.RightToLeft if current_language()=="ar" else Qt.LayoutDirection.LeftToRight)
