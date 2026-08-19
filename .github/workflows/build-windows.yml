@@ -106,9 +106,6 @@ jobs:
             gh release edit latest --title "MH - Coordinate v$version" --notes "Rolling release used by the in-app automatic updater."
           }
 
-          # Replace the fixed updater asset explicitly instead of relying on
-          # `gh release upload --clobber`, which can return HTTP 404 for an
-          # existing asset on a rolling release.
           gh release delete-asset latest "MH_Coordinate-Windows.zip" --yes 2>$null
           if ($LASTEXITCODE -ne 0) {
             Write-Host "No previous rolling Windows asset to delete."
@@ -116,5 +113,5 @@ jobs:
 
           gh release upload latest "MH_Coordinate-Windows.zip"
 
-      # Keep the Windows release pipeline tied to the same tested commit.
-      # This marker also forces a fresh release run whenever the workflow is repaired.
+      # Release pipeline intentionally runs the full suite before freezing the EXE.
+      # This keeps the downloadable Windows build tied to a tested main commit.
