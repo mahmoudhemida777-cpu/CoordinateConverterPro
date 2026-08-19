@@ -17,6 +17,7 @@ from ui.pages.map_page import MapPage
 from ui.pages.history_page import HistoryPage
 from ui.pages.settings_page import SettingsPage
 from ui.pages.about_page import AboutPage
+from ui.cad_import_fix import apply_cad_import_fix
 from ui.i18n import tr, set_language, register_language_listener, current_language, _TRANSLATIONS
 from ui.theme import apply_theme, preferred_font
 
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
             "survey": SurveyPage(), "cad": CadPage(), "batch": BatchPage(), "map": MapPage(),
             "history": HistoryPage(), "settings": SettingsPage(), "about": AboutPage(),
         }
+        apply_cad_import_fix(self.pages["cad"])
         for key, _, _ in SIDEBAR_ITEMS:
             self.stack.addWidget(self.pages[key])
 
@@ -116,7 +118,6 @@ class MainWindow(QMainWindow):
         return reverse.get(text, text)
 
     def _capture_translation_keys(self) -> None:
-        """Capture source-language text for legacy widgets that predate i18n."""
         for widget in self.findChildren(QAbstractButton):
             text = widget.text()
             if text:
