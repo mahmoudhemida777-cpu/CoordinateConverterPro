@@ -48,7 +48,11 @@ class ImportPage(QWidget):
         self.table=QTableWidget(0,4);self.table.setHorizontalHeaderLabels(["Point / Survey Code","X","Y","Z"]);self.table.setAlternatingRowColors(True);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch);layout.addWidget(self.table,1)
     def set_workspace_folder(self,folder):self.workspace_folder=folder;self.workspace_bar.set_folder(folder,self.active_path)
     def load_active_file(self,path):
-        if path and Path(path).is_file():self.workspace_folder=str(Path(path).parent);self.workspace_bar.set_folder(self.workspace_folder,path);self._import_path(path)
+        if path and Path(path).is_file():
+            resolved=Path(path).resolve()
+            # Prevent the shared-workspace signal from recursively re-loading Import.
+            if self.active_path and Path(self.active_path).resolve()==resolved:return
+            self.workspace_folder=str(resolved.parent);self.workspace_bar.set_folder(self.workspace_folder,resolved);self._import_path(str(resolved))
     def _choose_excel(self):self._choose("Excel files (*.xlsx)")
     def _choose_csv(self):self._choose("CSV files (*.csv)")
     def _choose_txt(self):self._choose("Survey TXT files (*.txt)")
