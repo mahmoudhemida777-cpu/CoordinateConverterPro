@@ -6,6 +6,9 @@ on:
       - main
     tags:
       - "v*.*.*"
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -92,6 +95,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish rolling Latest release for automatic updates
+        if: github.event_name != 'pull_request'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
