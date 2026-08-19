@@ -46,7 +46,7 @@ def test_map_canvas_is_large_enough_for_full_point_preview(qapp):
     try:
         canvas = window.pages["map"].view
         assert canvas.minimumHeight() >= 650
-        assert window.pages["map"].minimumWidth() >= 0
+        assert window.pages["map"].findChild(QScrollArea) is not None
     finally:
         window.close()
         window.deleteLater()
