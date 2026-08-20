@@ -66,11 +66,14 @@ class ConverterPage(QWidget):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
-        splitter.setMinimumHeight(285)
-        splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # The picker itself needs room for title + search + CRS rows + selected status.
+        # A fixed 285px splitter was forcing those controls to overlap.
+        splitter.setMinimumHeight(370)
+        splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
         self.target_picker = CRSPicker(self.engine, tr("TARGET CRS"))
         for picker in (self.source_picker, self.target_picker):
+            picker.setMinimumHeight(350)
             picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         splitter.addWidget(self.source_picker)
         splitter.addWidget(self.target_picker)
