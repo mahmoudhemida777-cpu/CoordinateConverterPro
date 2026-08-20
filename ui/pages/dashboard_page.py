@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGridLayout, QFrame, QHBoxLayout, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGridLayout, QFrame, QHBoxLayout, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 from core.batch.batch_processor import find_batch_files
 
 
@@ -37,9 +37,18 @@ class DashboardPage(QWidget):
         for i,w in enumerate((self.files,self.formats,self.points,self.engine)): metrics.addWidget(w,0,i)
         root.addLayout(metrics)
         root.addWidget(QLabel("Project Files — double-click or select a row, then Use Selected File"))
-        self.table=QTableWidget(0,5); self.table.setHorizontalHeaderLabels(["File","Format","Size","Modified","Path"]); self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.Stretch)
+        self.table=QTableWidget(0,5); self.table.setHorizontalHeaderLabels(["File","Format","Size","Modified","Path"])
+        self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.Stretch)
         for i in (1,2,3,4): self.table.horizontalHeader().setSectionResizeMode(i,QHeaderView.ResizeToContents)
-        self.table.setMinimumHeight(260); self.table.itemDoubleClicked.connect(lambda *_: self._use_selected_file()); root.addWidget(self.table)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setFocusPolicy(Qt.StrongFocus)
+        self.table.setStyleSheet("""
+            QTableWidget::item { padding: 6px; }
+            QTableWidget::item:selected { background: #2B7DE0; color: white; border: 1px solid #5EA7FF; }
+            QTableWidget::item:selected:active { background: #2B7DE0; color: white; }
+        """)
+        self.table.setMinimumHeight(260); self.table.itemClicked.connect(self._on_row_clicked); self.table.itemDoubleClicked.connect(lambda *_: self._use_selected_file()); root.addWidget(self.table)
 
     def _scan_folder(self):
         folder=QFileDialog.getExistingDirectory(self,"Select Project Folder")
@@ -56,9 +65,19 @@ class DashboardPage(QWidget):
             for c,v in enumerate(vals): self.table.setItem(row,c,QTableWidgetItem(v))
         self.files.set_value(str(len(files))); self.formats.set_value(str(len(formats))); self.status.setText(f"Scanned: {len(files)} supported file(s)")
 
+    def _on_row_clicked(self, item):
+        row = item.row()
+        self.table.selectRow(row)
+        path_item = self.table.item(row, 4)
+        if path_item:
+            self.active_file = path_item.text()
+            self.points.set_value(Path(self.active_file).name)
+            self.status.setText(f"Selected file: {Path(self.active_file).name}")
+
     def _use_selected_file(self):
         row=self.table.currentRow()
         if row < 0: return
+        self.table.selectRow(row)
         item=self.table.item(row,4)
         if not item: return
         path=item.text(); self.active_file=path; self.points.set_value(Path(path).name); self.status.setText(f"Active file: {Path(path).name}"); self.file_selected.emit(path)
