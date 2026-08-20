@@ -73,10 +73,9 @@ class ConverterPage(QWidget):
         self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
         self.target_picker = CRSPicker(self.engine, tr("TARGET CRS"))
         for picker in (self.source_picker, self.target_picker):
-            picker.setMinimumHeight(350)
-            picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        splitter.addWidget(self.source_picker)
-        splitter.addWidget(self.target_picker)
+    picker.setMinimumSize(0, 350)
+    picker.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
+        splitter.setSizes([1, 1])
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
         root.addWidget(splitter, 0)
