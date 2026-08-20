@@ -80,6 +80,11 @@ class DashboardPage(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setFocusPolicy(Qt.StrongFocus)
         self.table.setAlternatingRowColors(True)
+        # Keep the selected row visibly highlighted even when the table loses focus.
+        self.table.setStyleSheet(
+            "QTableWidget::item:selected { background-color:#1769E0; color:#FFFFFF; }"
+            "QTableWidget::item:selected:!active { background-color:#1769E0; color:#FFFFFF; }"
+        )
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.itemDoubleClicked.connect(lambda *_: self._use_selected_file())
         root.addWidget(self.table)
@@ -108,6 +113,7 @@ class DashboardPage(QWidget):
         if not self.folder:
             return
         try:
+            # Keep CAD discovery enabled so DXF/DWG files are selectable from Dashboard.
             files = find_batch_files(self.folder, include_cad=True)
         except Exception as exc:
             self.status.setText(f"Scan error: {exc}")
@@ -118,7 +124,13 @@ class DashboardPage(QWidget):
             formats.add(p.suffix.lower())
             row = self.table.rowCount()
             self.table.insertRow(row)
-            vals = [p.name, p.suffix.upper().lstrip('.'), f"{p.stat().st_size / 1024:.1f} KB", datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M'), str(p)]
+            vals = [
+                p.name,
+                p.suffix.upper().lstrip('.'),
+                f"{p.stat().st_size / 1024:.1f} KB",
+                datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M'),
+                str(p),
+            ]
             for c, v in enumerate(vals):
                 item = QTableWidgetItem(v)
                 item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
