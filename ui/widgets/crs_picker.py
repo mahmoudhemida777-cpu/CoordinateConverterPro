@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal, QSize, Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QLabel, QSizePolicy
 
 from core.crs.engine import CRSEngine
 from ui.i18n import tr
@@ -29,46 +29,49 @@ class CRSPicker(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
 
         self.title_label = QLabel(label)
         self.title_label.setObjectName("crsPickerTitle")
         self.title_label.setProperty("mhTextKey", label)
+        self.title_label.setMinimumHeight(28)
         layout.addWidget(self.title_label)
 
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText(tr("Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."))
         self.search_box.setProperty("mhPlaceholderKey", "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...")
-        self.search_box.setMinimumHeight(38)
-        self.search_box.setFont(QFont("Segoe UI", 9))
+        self.search_box.setMinimumHeight(42)
+        self.search_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.search_box.setFont(QFont("Segoe UI", 10))
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
 
-        # Exactly five quick rows are shown by default. Fixed row/list heights
-        # prevent the popup/list text from intruding into the selected-status box.
         self.results_list = QListWidget()
-        self.results_list.setFixedHeight(182)
+        self.results_list.setMinimumHeight(210)
+        self.results_list.setMaximumHeight(235)
+        self.results_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.results_list.setUniformItemSizes(True)
-        self.results_list.setSpacing(0)
-        self.results_list.setFont(QFont("Segoe UI", 9))
+        self.results_list.setSpacing(2)
+        self.results_list.setFont(QFont("Segoe UI", 10))
+        self.results_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.results_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_list.setStyleSheet(
-            "QListWidget { border:1px solid #C7D0DD; border-radius:6px; background:#FFFFFF; padding:2px; }"
-            "QListWidget::item { min-height:34px; padding:0 8px; border-radius:4px; }"
+            "QListWidget { border:1px solid #C7D0DD; border-radius:7px; background:#FFFFFF; padding:4px; }"
+            "QListWidget::item { min-height:38px; padding:6px 10px; border-radius:5px; }"
             "QListWidget::item:selected { background:#E7EEF8; color:#1F3864; font-weight:600; }"
         )
         self.results_list.itemClicked.connect(self._on_item_clicked)
-        layout.addWidget(self.results_list)
+        layout.addWidget(self.results_list, 1)
 
         self.selected_label = QLabel(tr("No CRS selected"))
         self.selected_label.setObjectName("crsSelectedLabel")
         self.selected_label.setProperty("mhTextKey", "No CRS selected")
-        self.selected_label.setMinimumHeight(38)
-        self.selected_label.setMaximumHeight(52)
-        self.selected_label.setWordWrap(True)
+        self.selected_label.setMinimumHeight(48)
+        self.selected_label.setMaximumHeight(58)
+        self.selected_label.setWordWrap(False)
+        self.selected_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.selected_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.selected_label)
-        layout.addStretch(1)
 
         self._show_quick_crs()
 
@@ -81,7 +84,7 @@ class CRSPicker(QWidget):
         item = QListWidgetItem(f"{code} — {name}")
         item.setData(Qt.ItemDataRole.UserRole, code)
         item.setData(Qt.ItemDataRole.UserRole + 1, name)
-        item.setSizeHint(QSize(0, 34))
+        item.setSizeHint(QSize(0, 40))
         self.results_list.addItem(item)
 
     def _on_search(self, text: str) -> None:
