@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGridLayout, QFrame, QHBoxLayout, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 from core.batch.batch_processor import find_batch_files
 
@@ -24,7 +25,7 @@ class DashboardPage(QWidget):
     file_selected = Signal(str)
 
     def __init__(self):
-        super().__init__(); self.folder = None; self.active_file = None
+        super().__init__(); self.folder = None; self.active_file = None; self._highlighted_row = -1
         root = QVBoxLayout(self); root.setContentsMargins(30,24,30,24); root.setAlignment(Qt.AlignTop)
         title = QLabel("MH GeoSuite Pro"); title.setStyleSheet("font-size:24px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
         root.addWidget(QLabel("Professional Surveying & Geospatial Engineering Suite"))
@@ -47,6 +48,7 @@ class DashboardPage(QWidget):
             QTableWidget::item { padding: 6px; }
             QTableWidget::item:selected { background: #2B7DE0; color: white; border: 1px solid #5EA7FF; }
             QTableWidget::item:selected:active { background: #2B7DE0; color: white; }
+            QTableWidget::item:selected:!active { background: #2B7DE0; color: white; }
         """)
         self.table.setMinimumHeight(260); self.table.itemClicked.connect(self._on_row_clicked); self.table.itemDoubleClicked.connect(lambda *_: self._use_selected_file()); root.addWidget(self.table)
 
@@ -54,11 +56,31 @@ class DashboardPage(QWidget):
         folder=QFileDialog.getExistingDirectory(self,"Select Project Folder")
         if folder: self.folder=folder; self.refresh()
 
+    def _clear_row_highlight(self):
+        if self._highlighted_row < 0: return
+        for col in range(self.table.columnCount()):
+            item = self.table.item(self._highlighted_row, col)
+            if item:
+                item.setBackground(QBrush())
+                item.setForeground(QBrush())
+        self._highlighted_row = -1
+
+    def _highlight_row(self, row: int):
+        self._clear_row_highlight()
+        selected_bg = QBrush(QColor("#2B7DE0"))
+        selected_fg = QBrush(QColor("#FFFFFF"))
+        for col in range(self.table.columnCount()):
+            item = self.table.item(row, col)
+            if item:
+                item.setBackground(selected_bg)
+                item.setForeground(selected_fg)
+        self._highlighted_row = row
+
     def refresh(self):
         if not self.folder: return
         try: files=find_batch_files(self.folder)
         except Exception as exc: self.status.setText(f"Scan error: {exc}"); return
-        self.table.setRowCount(0); formats=set()
+        self._clear_row_highlight(); self.table.setRowCount(0); formats=set(); self.active_file=None
         for p in files:
             formats.add(p.suffix.lower()); row=self.table.rowCount(); self.table.insertRow(row)
             vals=[p.name,p.suffix.upper().lstrip('.'),f"{p.stat().st_size/1024:.1f} KB",datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M'),str(p)]
@@ -68,6 +90,7 @@ class DashboardPage(QWidget):
     def _on_row_clicked(self, item):
         row = item.row()
         self.table.selectRow(row)
+        self._highlight_row(row)
         path_item = self.table.item(row, 4)
         if path_item:
             self.active_file = path_item.text()
@@ -77,7 +100,7 @@ class DashboardPage(QWidget):
     def _use_selected_file(self):
         row=self.table.currentRow()
         if row < 0: return
-        self.table.selectRow(row)
+        self.table.selectRow(row); self._highlight_row(row)
         item=self.table.item(row,4)
         if not item: return
         path=item.text(); self.active_file=path; self.points.set_value(Path(path).name); self.status.setText(f"Active file: {Path(path).name}"); self.file_selected.emit(path)
