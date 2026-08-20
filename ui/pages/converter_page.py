@@ -3,134 +3,317 @@ from __future__ import annotations
 import csv
 from datetime import datetime
 from pathlib import Path
+
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QProgressBar, QSplitter, QMessageBox, QGroupBox, QComboBox, QSizePolicy
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
+    QTableWidget, QTableWidgetItem, QProgressBar, QSplitter, QMessageBox,
+    QGroupBox, QHeaderView, QSizePolicy,
+)
+
 from core.crs.engine import CRSEngine
-from core.models import PointResult
-from core.parsers import csv_parser, xlsx_parser, kml_parser
+from core.parsers import csv_parser, xlsx_parser, kml_parser, txt_parser
+from core.crs.engine import CRSEngine
 from core.validation.validator import validate_points, validate_zone_consistency
 from core.exporters.xlsx_exporter import export_xlsx
 from core.exporters.csv_exporter import export_csv
+from core.exporters.txt_exporter import export_txt
 from core.exporters.dxf_exporter import export_dxf, LabelMode
 from ui.i18n import tr
 from ui.widgets.crs_picker import CRSPicker
+from ui.widgets.workspace_bar import WorkspaceFileBar
 from ui.pages.import_page import ColumnMappingDialog
 from ui.pages.history_page import append_history
 from ui.pages.settings_page import current_precision
+from core.cad_importer import extract_cad_points
+
 
 class ConverterPage(QWidget):
     def __init__(self) -> None:
-        super().__init__(); self.engine=CRSEngine(); self.source_points=[]; self.result_points=[]; self.current_file=None
-        root=QVBoxLayout(self); root.setContentsMargins(30,20,30,20); title=QLabel(tr("CRS Converter")); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
-        file_row=QHBoxLayout(); self.choose_btn=QPushButton(tr("SOURCE FILE")); self.choose_btn.clicked.connect(self._choose_file); file_row.addWidget(self.choose_btn); self.file_label=QLabel("No file selected"); self.file_label.setStyleSheet("color:#777;"); file_row.addWidget(self.file_label); file_row.addStretch(); root.addLayout(file_row)
-        splitter=QSplitter(Qt.Horizontal); self.source_picker=CRSPicker(self.engine,tr("SOURCE CRS")); self.target_picker=CRSPicker(self.engine,tr("TARGET CRS")); self.source_picker.crs_selected.connect(lambda *_: self._refresh_operations()); self.target_picker.crs_selected.connect(lambda *_: self._refresh_operations()); splitter.addWidget(self.source_picker); splitter.addWidget(self.target_picker); root.addWidget(splitter)
-        op_row=QHBoxLayout(); op_row.addWidget(QLabel("TRANSFORMATION")); self.operation_picker=QComboBox(); self.operation_picker.addItem("Automatic — PROJ best available", "auto"); op_row.addWidget(self.operation_picker, 1); root.addLayout(op_row)
-        self.operation_info=QLabel("Operation: Automatic — PROJ best available"); self.operation_info.setStyleSheet("color:#666;"); root.addWidget(self.operation_info)
-        convert_row=QHBoxLayout(); self.convert_btn=QPushButton(tr("CONVERT")); self.convert_btn.setStyleSheet("background-color:#C9A227;color:white;font-weight:bold;padding:8px 24px;"); self.convert_btn.clicked.connect(self._run_conversion); convert_row.addWidget(self.convert_btn); convert_row.addStretch(); root.addLayout(convert_row)
-        self.progress=QProgressBar(); root.addWidget(self.progress); summary_box=QGroupBox(); summary_layout=QHBoxLayout(summary_box); self.total_label=QLabel(f"{tr('Total Points')}: 0"); self.success_label=QLabel(f"{tr('Successful')}: 0"); self.failed_label=QLabel(f"{tr('Failed')}: 0"); self.warning_label=QLabel(f"{tr('Warnings')}: 0"); [summary_layout.addWidget(x) for x in (self.total_label,self.success_label,self.failed_label,self.warning_label)]; root.addWidget(summary_box)
+        super().__init__()
+        self.engine = CRSEngine()
+        self.source_points = []
+        self.result_points = []
+        self.current_file = None
+        self.workspace_folder = None
 
-        # ===== التعديلات لجعل الجدول أكبر وأكثر وضوحاً =====
-        self.results_table=QTableWidget(0,9)
-        self.results_table.setHorizontalHeaderLabels(["Name","Src X","Src Y","Src Z","Tgt X","Tgt Y","Tgt Z","Status","Message"])
-        self.results_table.setAlternatingRowColors(True)        # تمت الإضافة: تلوين الصفوف بالتناوب للرؤية الأفضل
-        self.results_table.verticalHeader().setDefaultSectionSize(32) # تمت الإضافة: تكبير ارتفاع كل صف
-        self.results_table.setMinimumHeight(480)                # تمت الإضافة: ارتفاع أدنى كبير لإظهار نقاط كثيرة
-        self.results_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding) # تأكيد التمدد
-        root.addWidget(self.results_table)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 16, 24, 18)
+        root.setSpacing(10)
 
-        export_box=QGroupBox("Export Converted Points"); export_row=QHBoxLayout(export_box); self.export_dxf_btn=QPushButton("AutoCAD / Civil 3D — DXF"); self.export_dxf_btn.clicked.connect(self._export_dxf); self.export_civil_btn=QPushButton("Civil 3D — PENZD CSV"); self.export_civil_btn.clicked.connect(self._export_civil3d); self.export_xlsx_btn=QPushButton("Excel XLSX"); self.export_xlsx_btn.clicked.connect(self._export_xlsx); self.export_csv_btn=QPushButton("Generic CSV"); self.export_csv_btn.clicked.connect(self._export_csv); [x.setEnabled(False) or export_row.addWidget(x) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn)]; root.addWidget(export_box)
+        title = QLabel(tr("CRS Converter"))
+        title.setObjectName("pageTitle")
+        title.setProperty("mhTextKey", "CRS Converter")
+        root.addWidget(title)
 
-    def load_active_file(self,path:str)->None:
-        if path and Path(path).is_file(): self._load_path(path)
+        self.workspace_bar = WorkspaceFileBar()
+        self.workspace_bar.file_selected.connect(self._load_path)
+        root.addWidget(self.workspace_bar)
 
-    def _choose_file(self)->None:
-        path,_=QFileDialog.getOpenFileName(self,tr("Choose File"),"","Supported files (*.kmz *.kml *.csv *.xlsx);;All files (*.*)")
-        if path:self._load_path(path)
+        file_row = QHBoxLayout()
+        file_row.setSpacing(8)
+        self.choose_btn = QPushButton(tr("SOURCE FILE"))
+        self.choose_btn.setProperty("mhTextKey", "SOURCE FILE")
+        self.choose_btn.clicked.connect(self._choose_file)
+        file_row.addWidget(self.choose_btn)
+        self.file_label = QLabel(tr("No file selected"))
+        self.file_label.setProperty("mhTextKey", "No file selected")
+        self.file_label.setWordWrap(True)
+        file_row.addWidget(self.file_label, 1)
+        root.addLayout(file_row)
 
-    def _load_path(self,path:str)->None:
-        suffix=Path(path).suffix.lower()
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
+        self.target_picker = CRSPicker(self.engine, tr("TARGET CRS"))
+        splitter.addWidget(self.source_picker)
+        splitter.addWidget(self.target_picker)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([500, 500])
+        root.addWidget(splitter)
+
+        convert_row = QHBoxLayout()
+        self.convert_btn = QPushButton(tr("CONVERT"))
+        self.convert_btn.setProperty("mhTextKey", "CONVERT")
+        self.convert_btn.setObjectName("primaryButton")
+        self.convert_btn.setMinimumHeight(42)
+        self.convert_btn.clicked.connect(self._run_conversion)
+        convert_row.addWidget(self.convert_btn, 0)
+        convert_row.addStretch(1)
+        root.addLayout(convert_row)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setVisible(False)
+        root.addWidget(self.progress)
+
+        summary_box = QGroupBox()
+        summary_box.setObjectName("conversionSummary")
+        summary_layout = QHBoxLayout(summary_box)
+        summary_layout.setContentsMargins(14, 10, 14, 10)
+        summary_layout.setSpacing(30)
+        self.total_label = QLabel(f"{tr('Total Points')}: 0")
+        self.success_label = QLabel(f"{tr('Successful')}: 0")
+        self.failed_label = QLabel(f"{tr('Failed')}: 0")
+        self.warning_label = QLabel(f"{tr('Warnings')}: 0")
+        for label, key in (
+            (self.total_label, "Total Points"), (self.success_label, "Successful"),
+            (self.failed_label, "Failed"), (self.warning_label, "Warnings"),
+        ):
+            label.setProperty("mhTextKey", key)
+            summary_layout.addWidget(label, 1)
+        root.addWidget(summary_box)
+
+        self.results_table = QTableWidget(0, 9)
+        self.results_table.setObjectName("conversionResultsTable")
+        self.results_table.setHorizontalHeaderLabels([
+            tr("Name"), tr("Src X"), tr("Src Y"), tr("Src Z"),
+            tr("Tgt X"), tr("Tgt Y"), tr("Tgt Z"), tr("Status"), tr("Message"),
+        ])
+        self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.results_table.horizontalHeader().setMinimumSectionSize(78)
+        self.results_table.verticalHeader().setDefaultSectionSize(28)
+        self.results_table.setAlternatingRowColors(True)
+        self.results_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        root.addWidget(self.results_table, 1)
+
+        export_box = QGroupBox(tr("Export Converted Points"))
+        export_box.setProperty("mhTitleKey", "Export Converted Points")
+        export_row = QHBoxLayout(export_box)
+        export_row.setContentsMargins(10, 14, 10, 10)
+        export_row.setSpacing(8)
+        self.export_dxf_btn = self._export_button("AutoCAD / Civil 3D — DXF", self._export_dxf)
+        self.export_civil_btn = self._export_button("Civil 3D — PENZD CSV", self._export_civil3d)
+        self.export_xlsx_btn = self._export_button("Excel XLSX", self._export_xlsx)
+        self.export_csv_btn = self._export_button("Generic CSV", self._export_csv)
+        self.export_txt_btn = self._export_button("Survey TXT", self._export_txt)
+        for button in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn, self.export_txt_btn):
+            button.setEnabled(False)
+            export_row.addWidget(button, 1)
+        root.addWidget(export_box)
+
+    @staticmethod
+    def _export_button(text: str, slot) -> QPushButton:
+        button = QPushButton(tr(text))
+        button.setProperty("mhTextKey", text)
+        button.setMinimumHeight(42)
+        button.clicked.connect(slot)
+        return button
+
+    def set_workspace_folder(self, folder: str) -> None:
+        self.workspace_folder = folder
+        self.workspace_bar.set_folder(folder, self.current_file)
+
+    def load_active_file(self, path: str) -> None:
+        if path and Path(path).is_file():
+            self.workspace_folder = str(Path(path).parent)
+            self.workspace_bar.set_folder(self.workspace_folder, path)
+            self._load_path(path)
+
+    def _choose_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("Choose File"), self.workspace_folder or "",
+            "Supported coordinate/CAD (*.kmz *.kml *.dxf *.dwg *.csv *.xlsx *.txt);;"
+            "CAD (*.dxf *.dwg);;Coordinate (*.csv *.xlsx *.txt *.kml *.kmz);;All files (*.*)",
+        )
+        if path:
+            self._load_path(path)
+
+    def _load_path(self, path: str) -> None:
+        suffix = Path(path).suffix.casefold()
         try:
-            if suffix==".kmz": points=kml_parser.parse_kmz_file(path)
-            elif suffix==".kml": points=kml_parser.parse_kml_file(path)
-            elif suffix==".csv":
-                dlg=ColumnMappingDialog(csv_parser.sniff_columns(path),self)
-                if dlg.exec()!=dlg.Accepted:return
-                points=csv_parser.parse_csv(path,csv_parser.ColumnMapping(**dlg.result_mapping()))
-            elif suffix==".xlsx":
-                dlg=ColumnMappingDialog(xlsx_parser.sniff_columns(path),self)
-                if dlg.exec()!=dlg.Accepted:return
-                points=xlsx_parser.parse_xlsx(path,xlsx_parser.ColumnMapping(**dlg.result_mapping()))
-            else: raise ValueError(f"Unsupported file type: {suffix}")
-        except Exception as exc: QMessageBox.critical(self,"Import Error",str(exc)); return
-        self.source_points=points; self.result_points=[]; self.current_file=path; self.file_label.setText(f"{Path(path).name} — {len(points)} points loaded")
+            if suffix in {".dxf", ".dwg"}:
+                points = extract_cad_points(path)
+            elif suffix == ".kmz":
+                points = kml_parser.parse_kmz_file(path)
+            elif suffix == ".kml":
+                points = kml_parser.parse_kml_file(path)
+            elif suffix == ".txt":
+                points = txt_parser.parse_txt(path)
+            elif suffix == ".csv":
+                dlg = ColumnMappingDialog(csv_parser.sniff_columns(path), self)
+                if dlg.exec() != dlg.Accepted:
+                    return
+                points = csv_parser.parse_csv(path, csv_parser.ColumnMapping(**dlg.result_mapping()))
+            elif suffix == ".xlsx":
+                dlg = ColumnMappingDialog(xlsx_parser.sniff_columns(path), self)
+                if dlg.exec() != dlg.Accepted:
+                    return
+                points = xlsx_parser.parse_xlsx(path, xlsx_parser.ColumnMapping(**dlg.result_mapping()))
+            else:
+                raise ValueError(f"Unsupported file type: {suffix}")
+        except Exception as exc:
+            QMessageBox.critical(self, tr("Import Error"), str(exc))
+            return
+
+        points = list(points or [])
+        if not points:
+            QMessageBox.warning(self, tr("Import"), tr("No coordinate points were detected in the selected file."))
+            return
+        self.source_points = points
+        self.result_points = []
+        self.current_file = path
+        self.file_label.setProperty("mhTextKey", "")
+        self.file_label.setText(f"{Path(path).name} — {len(points)} {tr('points loaded')}")
+        self.workspace_folder = str(Path(path).parent)
+        self.workspace_bar.set_folder(self.workspace_folder, path)
         if suffix in {".kml", ".kmz"}:
             self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
-        [x.setEnabled(False) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn)]
-        self._refresh_operations()
+        for button in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn, self.export_txt_btn):
+            button.setEnabled(False)
 
-    def _refresh_operations(self):
-        src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg()
-        if not src or not tgt: return
+    def _run_conversion(self) -> None:
+        if not self.source_points:
+            QMessageBox.warning(self, tr("No data"), tr("Please choose a source file first."))
+            return
+        src = self.source_picker.selected_epsg()
+        tgt = self.target_picker.selected_epsg()
+        if not src or not tgt:
+            QMessageBox.warning(self, tr("No CRS"), tr("Select both Source CRS and Target CRS."))
+            return
         try:
-            operations=self.engine.get_operations(src,tgt)
+            selected_operation = self.engine.get_selected_operation(src, tgt, "auto")
         except Exception as exc:
-            self.operation_picker.clear(); self.operation_picker.addItem("Automatic — PROJ best available","auto"); self.operation_info.setText(f"Operation lookup unavailable: {exc}"); return
-        self.operation_picker.clear(); self.operation_picker.addItem("Automatic — PROJ best available","auto")
-        for op in operations:
-            accuracy = "unknown" if op["accuracy"] is None or op["accuracy"] < 0 else f"{op['accuracy']:.3g} m"
-            self.operation_picker.addItem(f"{op['description']} — accuracy {accuracy}", str(op["id"]))
-        self.operation_picker.setCurrentIndex(0)
-        self.operation_info.setText("Operation: Automatic — PROJ best available. Choose an explicit operation when the authority/client specification requires it.")
+            QMessageBox.critical(self, tr("Transformation Error"), str(exc))
+            return
 
-    def _run_conversion(self)->None:
-        if not self.source_points: QMessageBox.warning(self,"No data","Please choose a source file first."); return
-        src=self.source_picker.selected_epsg(); tgt=self.target_picker.selected_epsg(); operation=self.operation_picker.currentData() or "auto"
-        if not src or not tgt: QMessageBox.warning(self,"No CRS","Please select both a source and target CRS."); return
-        try: selected_operation=self.engine.get_selected_operation(src,tgt,operation)
-        except Exception as exc: QMessageBox.critical(self,"Transformation Error",str(exc)); return
-        report=validate_points(self.source_points); zone_warnings=validate_zone_consistency(src,tgt); self.progress.setMaximum(len(self.source_points)); self.result_points=[]
-        for i,p in enumerate(self.source_points,1): self.result_points.append(self.engine.transform_points(src,tgt,[p],operation)[0]); self.progress.setValue(i)
-        self._populate_results(); [x.setEnabled(bool(self.result_points)) for x in (self.export_dxf_btn,self.export_civil_btn,self.export_xlsx_btn,self.export_csv_btn)]
-        accuracy=selected_operation.get("accuracy"); accuracy_text="unknown" if accuracy is None or accuracy < 0 else f"{accuracy:.3g} m"
-        self.operation_info.setText(f"Operation: {selected_operation['description']} | Published/PROJ accuracy: {accuracy_text}")
-        append_history({"time":datetime.now().astimezone().isoformat(timespec="seconds"),"file":Path(self.current_file).name if self.current_file else "","source_crs":src,"target_crs":tgt,"points":len(self.result_points),"operation":selected_operation["description"],"status":"SUCCESS"})
-        if zone_warnings or report.warnings: QMessageBox.information(self,"Warnings","\n".join(zone_warnings+[w.message for w in report.warnings]))
+        report = validate_points(self.source_points)
+        zone_warnings = validate_zone_consistency(src, tgt)
+        self.progress.setVisible(True)
+        self.progress.setMaximum(len(self.source_points))
+        self.progress.setValue(0)
+        self.result_points = []
+        for i, point in enumerate(self.source_points, 1):
+            self.result_points.append(self.engine.transform_points(src, tgt, [point], "auto")[0])
+            self.progress.setValue(i)
+        self.progress.setVisible(False)
+        self._populate_results()
+        enabled = bool(self.result_points)
+        for button in (self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn, self.export_csv_btn, self.export_txt_btn):
+            button.setEnabled(enabled)
 
-    def _fmt(self,value): return "" if value is None else (f"{value:.{current_precision()}f}" if isinstance(value,(int,float)) else str(value))
-    def _populate_results(self):
-        pts=self.result_points; self.total_label.setText(f"{tr('Total Points')}: {len(pts)}"); self.success_label.setText(f"{tr('Successful')}: {sum(p.status=='SUCCESS' for p in pts)}"); self.failed_label.setText(f"{tr('Failed')}: {sum(p.status=='FAILED' for p in pts)}"); self.warning_label.setText(f"{tr('Warnings')}: {sum(p.status=='WARNING' for p in pts)}"); self.results_table.setRowCount(len(pts))
-        for i,p in enumerate(pts):
-            for j,v in enumerate([p.name,p.src_x,p.src_y,p.src_z,p.tgt_x,p.tgt_y,p.tgt_z,p.status,p.message]): self.results_table.setItem(i,j,QTableWidgetItem(self._fmt(v)))
+        append_history({
+            "time": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "file": Path(self.current_file).name if self.current_file else "",
+            "source_crs": src,
+            "target_crs": tgt,
+            "points": len(self.result_points),
+            "operation": selected_operation["description"],
+            "status": "SUCCESS",
+        })
+        if zone_warnings or report.warnings:
+            QMessageBox.information(self, tr("Warnings"), "\n".join(zone_warnings + [w.message for w in report.warnings]))
 
-    def _require_results(self):
-        if not self.result_points: QMessageBox.warning(self,"Nothing to export","Run the conversion first."); return False
+    def _fmt(self, value):
+        return "" if value is None else (f"{value:.{current_precision()}f}" if isinstance(value, (int, float)) else str(value))
+
+    def _populate_results(self) -> None:
+        pts = self.result_points
+        self.total_label.setText(f"{tr('Total Points')}: {len(pts)}")
+        self.success_label.setText(f"{tr('Successful')}: {sum(p.status == 'SUCCESS' for p in pts)}")
+        self.failed_label.setText(f"{tr('Failed')}: {sum(p.status == 'FAILED' for p in pts)}")
+        self.warning_label.setText(f"{tr('Warnings')}: {sum(p.status == 'WARNING' for p in pts)}")
+        self.results_table.setRowCount(len(pts))
+        for i, point in enumerate(pts):
+            values = [point.name, point.src_x, point.src_y, point.src_z, point.tgt_x, point.tgt_y, point.tgt_z, point.status, point.message]
+            for j, value in enumerate(values):
+                self.results_table.setItem(i, j, QTableWidgetItem(self._fmt(value)))
+
+    def _require_results(self) -> bool:
+        if not self.result_points:
+            QMessageBox.warning(self, tr("Nothing to export"), tr("Run the conversion first."))
+            return False
         return True
-    def _export_dxf(self):
+
+    def _export_dxf(self) -> None:
         if not self._require_results(): return
-        path,_=QFileDialog.getSaveFileName(self,"Export AutoCAD / Civil 3D DXF","Converted_Points.dxf","AutoCAD DXF (*.dxf)")
-        if not path:return
-        try: export_dxf(self.result_points,path,label_mode=LabelMode.NAME,text_height=1.0,use_target_coords=True); QMessageBox.information(self,"Export Complete",f"DXF created successfully:\n{path}")
-        except Exception as exc: QMessageBox.critical(self,"DXF Export Error",str(exc))
-    def _export_civil3d(self):
-        if not self._require_results(): return
-        path,_=QFileDialog.getSaveFileName(self,"Export Civil 3D PENZD","Civil3D_PENZD.csv","CSV (*.csv)")
-        if not path:return
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export AutoCAD / Civil 3D DXF"), "Converted_Points.dxf", "AutoCAD DXF (*.dxf)")
+        if not path: return
         try:
-            precision=current_precision()
-            with open(path,"w",newline="",encoding="utf-8-sig") as f:
-                writer=csv.writer(f); writer.writerow(["Point Number","Easting","Northing","Elevation","Description"])
-                for i,p in enumerate(self.result_points,1):
-                    if p.tgt_x is None or p.tgt_y is None: continue
-                    writer.writerow([i,f"{p.tgt_x:.{precision}f}",f"{p.tgt_y:.{precision}f}",f"{(p.tgt_z or 0):.{precision}f}",p.name or ""])
-            QMessageBox.information(self,"Export Complete",f"Civil 3D PENZD point file created:\n{path}")
-        except Exception as exc: QMessageBox.critical(self,"Civil 3D Export Error",str(exc))
-    def _export_xlsx(self):
+            export_dxf(self.result_points, path, label_mode=LabelMode.NAME, text_height=1.0, use_target_coords=True)
+            QMessageBox.information(self, tr("Export Complete"), f"{tr('DXF created successfully')}:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, tr("DXF Export Error"), str(exc))
+
+    def _export_civil3d(self) -> None:
         if not self._require_results(): return
-        path,_=QFileDialog.getSaveFileName(self,"Export XLSX","Project_Export.xlsx","Excel (*.xlsx)")
-        if not path:return
-        details=self.engine.get_crs_details(self.source_picker.selected_epsg()); export_xlsx(self.result_points,path,self.source_picker.selected_epsg(),self.target_picker.selected_epsg(),details,current_precision()); QMessageBox.information(self,"Exported",f"Saved to {path}")
-    def _export_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export Civil 3D PENZD"), "Civil3D_PENZD.csv", "CSV (*.csv)")
+        if not path: return
+        try:
+            precision = current_precision()
+            with open(path, "w", newline="", encoding="utf-8-sig") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["Point Number", "Easting", "Northing", "Elevation", "Description"])
+                for i, point in enumerate(self.result_points, 1):
+                    if point.tgt_x is None or point.tgt_y is None: continue
+                    writer.writerow([i, f"{point.tgt_x:.{precision}f}", f"{point.tgt_y:.{precision}f}", f"{(point.tgt_z or 0):.{precision}f}", point.name or ""])
+            QMessageBox.information(self, tr("Export Complete"), f"{tr('Civil 3D PENZD point file created')}:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, tr("Civil 3D Export Error"), str(exc))
+
+    def _export_xlsx(self) -> None:
         if not self._require_results(): return
-        path,_=QFileDialog.getSaveFileName(self,"Export CSV","Project_Export.csv","CSV (*.csv)")
-        if not path:return
-        export_csv(self.result_points,path,current_precision()); QMessageBox.information(self,"Exported",f"Saved to {path}")
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export XLSX"), "Project_Export.xlsx", "Excel (*.xlsx)")
+        if not path: return
+        details = self.engine.get_crs_details(self.source_picker.selected_epsg())
+        export_xlsx(self.result_points, path, self.source_picker.selected_epsg(), self.target_picker.selected_epsg(), details, current_precision())
+        QMessageBox.information(self, tr("Exported"), f"{tr('Saved to')}: {path}")
+
+    def _export_csv(self) -> None:
+        if not self._require_results(): return
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export CSV"), "Project_Export.csv", "CSV (*.csv)")
+        if not path: return
+        export_csv(self.result_points, path, current_precision())
+        QMessageBox.information(self, tr("Exported"), f"{tr('Saved to')}: {path}")
+
+    def _export_txt(self) -> None:
+        if not self._require_results(): return
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export Survey TXT"), "Project_Export.txt", "Text files (*.txt)")
+        if not path: return
+        try:
+            export_txt(self.result_points, path, current_precision())
+            QMessageBox.information(self, tr("Export Complete"), f"{tr('TXT created successfully')}:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, tr("TXT Export Error"), str(exc))
