@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, QSize, Qt
+from PySide6.QtCore import Signal, QSize, Qt, QTimer
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QLabel, QSizePolicy
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
+    QLabel, QSizePolicy, QSplitter, QTableWidget, QGroupBox,
+)
 
 from core.crs.engine import CRSEngine
 from ui.i18n import tr
@@ -29,35 +32,36 @@ class CRSPicker(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
         self.title_label = QLabel(label)
         self.title_label.setObjectName("crsPickerTitle")
         self.title_label.setProperty("mhTextKey", label)
-        self.title_label.setMinimumHeight(28)
+        self.title_label.setMinimumHeight(24)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.title_label)
 
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText(tr("Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."))
         self.search_box.setProperty("mhPlaceholderKey", "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...")
-        self.search_box.setMinimumHeight(42)
+        self.search_box.setMinimumHeight(38)
         self.search_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.search_box.setFont(QFont("Segoe UI", 10))
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
 
         self.results_list = QListWidget()
-        self.results_list.setMinimumHeight(210)
-        self.results_list.setMaximumHeight(235)
+        self.results_list.setMinimumHeight(105)
+        self.results_list.setMaximumHeight(155)
         self.results_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.results_list.setUniformItemSizes(True)
-        self.results_list.setSpacing(2)
+        self.results_list.setSpacing(1)
         self.results_list.setFont(QFont("Segoe UI", 10))
         self.results_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.results_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_list.setStyleSheet(
-            "QListWidget { border:1px solid #C7D0DD; border-radius:7px; background:#FFFFFF; padding:4px; }"
-            "QListWidget::item { min-height:38px; padding:6px 10px; border-radius:5px; }"
+            "QListWidget { border:1px solid #C7D0DD; border-radius:7px; background:#FFFFFF; padding:3px; }"
+            "QListWidget::item { min-height:30px; padding:4px 8px; border-radius:4px; }"
             "QListWidget::item:selected { background:#E7EEF8; color:#1F3864; font-weight:600; }"
         )
         self.results_list.itemClicked.connect(self._on_item_clicked)
@@ -66,14 +70,61 @@ class CRSPicker(QWidget):
         self.selected_label = QLabel(tr("No CRS selected"))
         self.selected_label.setObjectName("crsSelectedLabel")
         self.selected_label.setProperty("mhTextKey", "No CRS selected")
-        self.selected_label.setMinimumHeight(48)
-        self.selected_label.setMaximumHeight(58)
+        self.selected_label.setMinimumHeight(38)
+        self.selected_label.setMaximumHeight(42)
         self.selected_label.setWordWrap(False)
         self.selected_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.selected_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.selected_label)
 
+        self.setMinimumHeight(205)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._show_quick_crs()
+
+        # The converter page historically reserved 390px for each picker.
+        # That reservation is too tall for the complete page and causes the
+        # summary/table/export sections to collide at normal window heights.
+        # Compact the parent splitter after it has been inserted into the page.
+        QTimer.singleShot(0, self._compact_converter_layout)
+
+    def _compact_converter_layout(self) -> None:
+        parent = self.parentWidget()
+        splitter = None
+        converter = None
+        while parent is not None:
+            if isinstance(parent, QSplitter):
+                splitter = parent
+                break
+            if parent.__class__.__name__ == "ConverterPage":
+                converter = parent
+            parent = parent.parentWidget()
+
+        if splitter is not None:
+            splitter.setMinimumHeight(235)
+            splitter.setMaximumHeight(260)
+            splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            splitter.setSizes([1, 1])
+
+            for picker in splitter.findChildren(CRSPicker):
+                picker.setMinimumHeight(205)
+                picker.setMaximumHeight(260)
+
+        if converter is None and splitter is not None:
+            converter = splitter.parentWidget()
+            while converter is not None and converter.__class__.__name__ != "ConverterPage":
+                converter = converter.parentWidget()
+
+        # Keep the results region useful while allowing the page to fit a
+        # standard 1366x768/1920x1080 desktop window without overlap.
+        if converter is not None:
+            table = converter.findChild(QTableWidget, "conversionResultsTable")
+            if table is not None:
+                table.setMinimumHeight(145)
+                table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+            summary = converter.findChild(QGroupBox, "conversionSummary")
+            if summary is not None:
+                summary.setMinimumHeight(60)
 
     def _show_quick_crs(self) -> None:
         self.results_list.clear()
@@ -84,7 +135,7 @@ class CRSPicker(QWidget):
         item = QListWidgetItem(f"{code} — {name}")
         item.setData(Qt.ItemDataRole.UserRole, code)
         item.setData(Qt.ItemDataRole.UserRole + 1, name)
-        item.setSizeHint(QSize(0, 40))
+        item.setSizeHint(QSize(0, 32))
         self.results_list.addItem(item)
 
     def _on_search(self, text: str) -> None:
