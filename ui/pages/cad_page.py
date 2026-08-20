@@ -7,6 +7,7 @@ from core.crs.engine import CRSEngine
 from core.models import PointResult
 from core.parsers import csv_parser,xlsx_parser,kml_parser
 from core.exporters.dxf_exporter import export_dxf,LabelMode
+from core.cad_importer import extract_cad_points
 from ui.i18n import tr
 from ui.widgets.crs_picker import CRSPicker
 from ui.pages.import_page import ColumnMappingDialog
@@ -26,14 +27,16 @@ class CadPage(QWidget):
     def load_active_file(self,path:str)->None:
         if path and Path(path).is_file(): self._load_path(path)
     def _choose_file(self)->None:
-        path,_=QFileDialog.getOpenFileName(self,"Choose Coordinate File","","Coordinate files (*.kmz *.kml *.csv *.xlsx);;All files (*.*)")
+        path,_=QFileDialog.getOpenFileName(self,"Choose Coordinate File","","Coordinate/CAD files (*.dxf *.dwg *.kmz *.kml *.csv *.xlsx);;CAD (*.dxf *.dwg);;All files (*.*)")
         if path:self._load_path(path)
     def _load_path(self,path:str)->None:
         if Path(path).stem.endswith("_converted") and Path(path).suffix.casefold()==".xlsx":
             if self._load_batch_converted_xlsx(path): return
         try:
             suffix=Path(path).suffix.casefold()
-            if suffix==".kmz": points=kml_parser.parse_kmz_file(path)
+            if suffix in {".dxf",".dwg"}:
+                points=extract_cad_points(path)
+            elif suffix==".kmz": points=kml_parser.parse_kmz_file(path)
             elif suffix==".kml": points=kml_parser.parse_kml_file(path)
             elif suffix==".csv":
                 dlg=ColumnMappingDialog(csv_parser.sniff_columns(path),self)
@@ -62,17 +65,11 @@ class CadPage(QWidget):
             pts=[]
             for n,row in enumerate(rows[1:],1):
                 try:
-                    sx=float(row[idx["Source X"]]) if "Source X" in idx and row[idx["Source X"]] is not None else None
-                    sy=float(row[idx["Source Y"]]) if "Source Y" in idx and row[idx["Source Y"]] is not None else None
-                    sz=float(row[idx["Source Z"]]) if "Source Z" in idx and row[idx["Source Z"]] is not None else None
-                    x=float(row[idx["Target X"]]); y=float(row[idx["Target Y"]]); z=float(row[idx["Target Z"]]) if "Target Z" in idx and row[idx["Target Z"]] is not None else None
-                    name=str(row[idx["Point Name"]]) if row[idx["Point Name"]] is not None else f"PT-{n}"; status=str(row[idx["Status"]]) if "Status" in idx else "SUCCESS"; message=str(row[idx["Message"]]) if "Message" in idx and row[idx["Message"]] else ""
-                    pts.append(PointResult(name,sx,sy,sz,x,y,z,status=status,message=message))
+                    sx=float(row[idx["Source X"]]) if "Source X" in idx and row[idx["Source X"]] is not None else None; sy=float(row[idx["Source Y"]]) if "Source Y" in idx and row[idx["Source Y"]] is not None else None; sz=float(row[idx["Source Z"]]) if "Source Z" in idx and row[idx["Source Z"]] is not None else None; x=float(row[idx["Target X"]]); y=float(row[idx["Target Y"]]); z=float(row[idx["Target Z"]]) if "Target Z" in idx and row[idx["Target Z"]] is not None else None; name=str(row[idx["Point Name"]]) if row[idx["Point Name"]] is not None else f"PT-{n}"; status=str(row[idx["Status"]]) if "Status" in idx else "SUCCESS"; message=str(row[idx["Message"]]) if "Message" in idx and row[idx["Message"]] else ""; pts.append(PointResult(name,sx,sy,sz,x,y,z,status=status,message=message))
                 except (TypeError,ValueError,IndexError):continue
             if not pts:return False
             success=sum(p.status=="SUCCESS" for p in pts)
-            if success==0:
-                QMessageBox.warning(self,"Invalid Batch Result","The batch workbook contains no successful transformed points. Please rerun Batch Converter with the correct Source CRS."); return True
+            if success==0: QMessageBox.warning(self,"Invalid Batch Result","The batch workbook contains no successful transformed points. Please rerun Batch Converter with the correct Source CRS."); return True
             self.batch_converted=True; self.source_points=pts; self.result_points=pts; self.current_file=path; label=f"{Path(path).name} — {len(pts)} points — ALREADY CONVERTED" + (f" — {target_crs}" if target_crs else ""); self.file_label.setText(label); self._set_crs_both(target_crs); self.progress.setMaximum(len(pts)); self.progress.setValue(len(pts)); self._populate(); return True
         except Exception as exc: QMessageBox.critical(self,"Batch Result Error",f"Could not load batch-converted file:\n{exc}"); return False
     def _set_crs_both(self,epsg):
