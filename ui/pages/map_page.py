@@ -83,9 +83,8 @@ class MapPage(QWidget):
         panel_layout.addStretch(1); panel.setWidget(panel_content)
         workbench.addWidget(panel, 0)
 
-        # Only the map viewport is enlarged; the rest of the Map page remains unchanged.
-        canvas_box = QGroupBox("MAP VIEW — ALL LOADED POINTS"); canvas_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); canvas_box.setMinimumHeight(820); canvas_layout = QVBoxLayout(canvas_box); canvas_layout.setContentsMargins(6, 16, 6, 6)
-        self.scene = QGraphicsScene(self); self.view = QGraphicsView(self.scene); self.view.setObjectName("mapCanvas"); self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setMinimumHeight(760); self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); canvas_layout.addWidget(self.view, 1); workbench.addWidget(canvas_box, 1)
+        canvas_box = QGroupBox("MAP VIEW — ALL LOADED POINTS"); canvas_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); canvas_box.setMinimumHeight(700); canvas_layout = QVBoxLayout(canvas_box); canvas_layout.setContentsMargins(6, 16, 6, 6)
+        self.scene = QGraphicsScene(self); self.view = QGraphicsView(self.scene); self.view.setObjectName("mapCanvas"); self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setMinimumHeight(650); self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); canvas_layout.addWidget(self.view, 1); workbench.addWidget(canvas_box, 1)
         root.addLayout(workbench, 1)
         self._apply_canvas_style()
 
