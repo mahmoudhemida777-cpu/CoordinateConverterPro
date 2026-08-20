@@ -13,7 +13,7 @@ class MapPage(QWidget):
         super().__init__(); root=QVBoxLayout(self); root.setContentsMargins(20,14,20,14); root.setSpacing(10)
         title=QLabel(tr("Map — Survey Point Preview")); title.setStyleSheet("font-size:20px;font-weight:bold;color:#1F3864;"); root.addWidget(title)
         row=QHBoxLayout(); row.setSpacing(10); btn=QPushButton(tr("Open Coordinate File")); btn.setMinimumSize(150,40); btn.clicked.connect(self._open); row.addWidget(btn); self.info=QLabel(tr("No points loaded")); self.info.setMinimumHeight(36); row.addWidget(self.info); row.addStretch(); root.addLayout(row)
-        self.scene=QGraphicsScene(self); self.view=QGraphicsView(self.scene); self.view.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding); self.view.setMinimumHeight(640); self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); root.addWidget(self.view,1)
+        self.scene=QGraphicsScene(self); self.view=QGraphicsView(self.scene); self.view.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding); self.view.setMinimumHeight(760); self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); root.addWidget(self.view,1)
     def load_active_file(self,path:str)->None:
         if path and Path(path).is_file(): self._load_path(path)
     def _open(self)->None:
@@ -39,7 +39,7 @@ class MapPage(QWidget):
         except Exception as exc:QMessageBox.critical(self,tr("Map Error"),str(exc))
     def _draw(self,points)->None:
         self.scene.clear(); min_x=min(p[1] for p in points); max_x=max(p[1] for p in points); min_y=min(p[2] for p in points); max_y=max(p[2] for p in points); dx=max(max_x-min_x,1e-9); dy=max(max_y-min_y,1e-9)
-        viewport=self.view.viewport().size(); width=max(float(viewport.width()),1000.0); height=max(float(viewport.height()),700.0); margin=60.0
+        viewport=self.view.viewport().size(); width=max(float(viewport.width()),1000.0); height=max(float(viewport.height()),820.0); margin=60.0
         for index,(name,x,y) in enumerate(points,1):
             sx=margin+(x-min_x)/dx*(width-2*margin); sy=height-(margin+(y-min_y)/dy*(height-2*margin)); radius=5.0 if len(points)<500 else 3.5
             item=self.scene.addEllipse(sx-radius,sy-radius,radius*2,radius*2,QPen(Qt.black),QBrush(Qt.black)); item.setToolTip(f"{name}\nX: {x}\nY: {y}")
