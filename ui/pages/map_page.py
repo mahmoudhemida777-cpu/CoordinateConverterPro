@@ -83,8 +83,9 @@ class MapPage(QWidget):
         panel_layout.addStretch(1); panel.setWidget(panel_content)
         workbench.addWidget(panel, 0)
 
-        canvas_box = QGroupBox("MAP VIEW — ALL LOADED POINTS"); canvas_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); canvas_box.setMinimumHeight(700); canvas_layout = QVBoxLayout(canvas_box); canvas_layout.setContentsMargins(6, 16, 6, 6)
-        self.scene = QGraphicsScene(self); self.view = QGraphicsView(self.scene); self.view.setObjectName("mapCanvas"); self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setMinimumHeight(650); self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); canvas_layout.addWidget(self.view, 1); workbench.addWidget(canvas_box, 1)
+        # Only the map viewport is enlarged; the rest of the Map page remains unchanged.
+        canvas_box = QGroupBox("MAP VIEW — ALL LOADED POINTS"); canvas_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); canvas_box.setMinimumHeight(820); canvas_layout = QVBoxLayout(canvas_box); canvas_layout.setContentsMargins(6, 16, 6, 6)
+        self.scene = QGraphicsScene(self); self.view = QGraphicsView(self.scene); self.view.setObjectName("mapCanvas"); self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.view.setMinimumHeight(760); self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding); self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter); canvas_layout.addWidget(self.view, 1); workbench.addWidget(canvas_box, 1)
         root.addLayout(workbench, 1)
         self._apply_canvas_style()
 
@@ -183,25 +184,18 @@ class MapPage(QWidget):
         for item in ordered:
             sx=margin+(float(item.point.src_x)-min_x)/dx*(width-2*margin); sy=height-(margin+(float(item.point.src_y)-min_y)/dy*(height-2*margin)); positions[id(item)]=(sx,sy)
         groups={}
-        for item in ordered: groups.setdefault(str(item.group),[]).append(item)
-        color_map={group:GROUP_COLORS[i%len(GROUP_COLORS)] for i,group in enumerate(groups)}; legend_parts=[]
-        for group,group_items in groups.items():
-            color=QColor(color_map[group])
-            if self._ordering_mode != "SOURCE":
-                pen=QPen(color,2.6,Qt.PenStyle.DashLine)
-                for a,b in zip(group_items,group_items[1:]):
-                    x1,y1=positions[id(a)];x2,y2=positions[id(b)];self.scene.addLine(x1,y1,x2,y2,pen)
-            legend_parts.append(f'<span style="color:{color.name()};"><b>●</b> {group}</span>')
-        self.legend.setText("&nbsp;&nbsp;".join(legend_parts) if legend_parts else "No code groups")
-        radius=self._point_size/2.0
-        for item in ordered:
-            sx,sy=positions[id(item)];group_color=QColor(color_map[str(item.group)]);point=self.scene.addEllipse(sx-radius,sy-radius,self._point_size,self._point_size,QPen(QColor("#FFFFFF"),1.5),QBrush(group_color));point.setZValue(10);point.setToolTip(f"{item.point.name}\nX: {float(item.point.src_x):.3f}\nY: {float(item.point.src_y):.3f}\nCode: {item.group}\nOrder: {item.number}")
-            if self._show_labels:
-                label=QGraphicsTextItem(f"{item.number}. {item.point.name}");label.setDefaultTextColor(text_color);label.setFont(QFont("Tajawal",self._label_size,QFont.Weight.Bold));label.setPos(sx+radius+6,sy-self._label_size-4);label.setZValue(20);self.scene.addItem(label)
-        x_label=QGraphicsTextItem(f"EASTING / X   {min_x:.3f}  →  {max_x:.3f}");y_label=QGraphicsTextItem(f"NORTHING / Y   {min_y:.3f}  →  {max_y:.3f}")
-        for label in (x_label,y_label): label.setDefaultTextColor(secondary_text);label.setFont(QFont("Tajawal",8,QFont.Weight.DemiBold));label.setZValue(30)
-        x_label.setPos(margin,height-30);y_label.setPos(margin,16);self.scene.addItem(x_label);self.scene.addItem(y_label);QTimer.singleShot(0,self._fit)
+        for item in ordered: groups.setdefault(item.group,[]).append(item)
+        for gi,(group,items) in enumerate(groups.items()):
+            color=QColor(GROUP_COLORS[gi%len(GROUP_COLORS)]); pen=QPen(color,1.4)
+            for a,b in zip(items,items[1:]): self.scene.addLine(positions[id(a)][0],positions[id(a)][1],positions[id(b)][0],positions[id(b)][1],pen)
+            for idx,item in enumerate(items,1):
+                x,y=positions[id(item)]; r=self._point_size/2; self.scene.addEllipse(x-r,y-r,2*r,2*r,QPen(color,1),QBrush(color));
+                if self._show_labels:
+                    text=QGraphicsTextItem(str(item.point.name or item.group or idx)); text.setDefaultTextColor(text_color); text.setFont(QFont("Arial",self._label_size)); text.setPos(x+r+3,y-r-4); self.scene.addItem(text)
+        self.legend.setText("  ".join(f"■ {g}" for g in groups.keys()))
 
     def _fit(self) -> None:
-        if not self._ordered or self.view.viewport().width()<=0 or self.view.viewport().height()<=0:return
-        self.view.resetTransform();self.view.fitInView(self.scene.sceneRect().adjusted(18,18,-18,-18),Qt.AspectRatioMode.KeepAspectRatio)
+        if self.scene.sceneRect().isNull(): return
+        rect=self.scene.itemsBoundingRect()
+        if rect.isNull(): rect=self.scene.sceneRect()
+        self.view.fitInView(rect.adjusted(-40,-40,40,40), Qt.AspectRatioMode.KeepAspectRatio)
