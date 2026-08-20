@@ -1,89 +1,43 @@
 name: Build Windows Release
-
 on:
   push:
     branches:
-      - main
-    tags:
-      - "v*.*.*"
+      - release/final-stable-fix
   workflow_dispatch:
-
 permissions:
-  contents: write
-
+  contents: read
 jobs:
   build-windows:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
-
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Install test dependencies
-        run: python -m pip install pytest
-
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - run: python -m pip install pytest
       - name: Run full test suite
         run: python -m pytest -q
-
-      - name: Install PyInstaller
-        run: python -m pip install -U pyinstaller
-
-      - name: Build MH GeoSuite Pro - standalone EXE
+      - run: python -m pip install -U pyinstaller
+      - name: Build standalone EXE
         run: |
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --onefile `
-            --windowed `
-            --name MH_GeoSuite_Pro `
-            --icon resources/icon.ico `
-            app.py
-
-      - name: Verify standalone EXE exists
+          pyinstaller --noconfirm --clean --onefile --windowed --name MH_Coordinate --icon resources/icon.ico app.py
+      - name: Verify EXE
         shell: pwsh
         run: |
-          $exe = "dist\MH_GeoSuite_Pro.exe"
-          if (-not (Test-Path $exe)) {
-            Write-Error "Standalone EXE was not created: $exe"
-            exit 1
-          }
-          Write-Host "MH GeoSuite Pro standalone EXE successfully created:"
-          Get-Item $exe
-
-      - name: Smoke test frozen EXE imports
+          if (-not (Test-Path "dist\MH_Coordinate.exe")) { throw "EXE was not created" }
+      - name: Smoke test frozen EXE
         shell: pwsh
         run: |
-          $exe = Resolve-Path "dist\MH_GeoSuite_Pro.exe"
-          $p = Start-Process -FilePath $exe -ArgumentList "--smoke-test" -PassThru -Wait
-          if ($p.ExitCode -ne 0) {
-            Write-Error "Frozen EXE smoke test failed with exit code $($p.ExitCode)"
-            exit 1
-          }
-          Write-Host "Frozen EXE smoke test passed. Critical modules loaded successfully."
-
+          $p = Start-Process -FilePath (Resolve-Path "dist\MH_Coordinate.exe") -ArgumentList "--smoke-test" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Frozen EXE smoke test failed: $($p.ExitCode)" }
       - name: Create portable ZIP
         shell: pwsh
-        run: |
-          Compress-Archive `
-            -Path "dist\MH_GeoSuite_Pro.exe" `
-            -DestinationPath "MH_GeoSuite_Pro-Windows.zip" `
-            -Force
-
-      - name: Upload Windows build
-        uses: actions/upload-artifact@v4
+        run: Compress-Archive -Path "dist\MH_Coordinate.exe" -DestinationPath "MH_Coordinate-Windows.zip" -Force
+      - uses: actions/upload-artifact@v4
         with:
-          name: MH-GeoSuite-Pro-Windows
-          path: MH_GeoSuite_Pro-Windows.zip
+          name: MH-Coordinate-Windows-Final
+          path: MH_Coordinate-Windows.zip
           if-no-files-found: error
