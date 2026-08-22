@@ -9,7 +9,7 @@ from ui.i18n import tr
 
 
 class CRSPicker(QWidget):
-    """Responsive CRS search/selection widget with stable row sizing."""
+    """Professional, responsive CRS search/selection widget."""
 
     crs_selected = Signal(str, str)
 
@@ -29,27 +29,30 @@ class CRSPicker(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
+        layout.setSpacing(7)
 
         self.title_label = QLabel(label)
         self.title_label.setObjectName("crsPickerTitle")
         self.title_label.setProperty("mhTextKey", label)
-        self.title_label.setMinimumHeight(24)
+        self.title_label.setMinimumHeight(25)
         self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.title_label)
 
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText(tr("Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."))
         self.search_box.setProperty("mhPlaceholderKey", "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...")
-        self.search_box.setMinimumHeight(38)
+        self.search_box.setMinimumHeight(40)
         self.search_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.search_box.setFont(QFont("Segoe UI", 10))
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
 
         self.results_list = QListWidget()
-        self.results_list.setMinimumHeight(105)
-        self.results_list.setMaximumHeight(125)
+        # Five quick CRS entries fit cleanly in the reference layout without
+        # colliding with the selected-CRS footer. The widget may grow further
+        # when its parent gives it more vertical space.
+        self.results_list.setMinimumHeight(135)
+        self.results_list.setMaximumHeight(165)
         self.results_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.results_list.setUniformItemSizes(True)
         self.results_list.setSpacing(1)
@@ -68,7 +71,7 @@ class CRSPicker(QWidget):
         self.selected_label.setObjectName("crsSelectedLabel")
         self.selected_label.setProperty("mhTextKey", "No CRS selected")
         self.selected_label.setMinimumHeight(34)
-        self.selected_label.setMaximumHeight(38)
+        self.selected_label.setMaximumHeight(40)
         self.selected_label.setWordWrap(False)
         self.selected_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.selected_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
