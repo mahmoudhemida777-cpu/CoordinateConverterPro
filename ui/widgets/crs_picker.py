@@ -29,35 +29,36 @@ class CRSPicker(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(5)
 
         self.title_label = QLabel(label)
         self.title_label.setObjectName("crsPickerTitle")
         self.title_label.setProperty("mhTextKey", label)
-        self.title_label.setMinimumHeight(28)
+        self.title_label.setMinimumHeight(24)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.title_label)
 
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText(tr("Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."))
         self.search_box.setProperty("mhPlaceholderKey", "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...")
-        self.search_box.setMinimumHeight(42)
+        self.search_box.setMinimumHeight(38)
         self.search_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.search_box.setFont(QFont("Segoe UI", 10))
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
 
         self.results_list = QListWidget()
-        self.results_list.setMinimumHeight(210)
-        self.results_list.setMaximumHeight(235)
+        self.results_list.setMinimumHeight(105)
+        self.results_list.setMaximumHeight(125)
         self.results_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.results_list.setUniformItemSizes(True)
-        self.results_list.setSpacing(2)
+        self.results_list.setSpacing(1)
         self.results_list.setFont(QFont("Segoe UI", 10))
         self.results_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.results_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_list.setStyleSheet(
-            "QListWidget { border:1px solid #C7D0DD; border-radius:7px; background:#FFFFFF; padding:4px; }"
-            "QListWidget::item { min-height:38px; padding:6px 10px; border-radius:5px; }"
+            "QListWidget { border:1px solid #C7D0DD; border-radius:7px; background:#FFFFFF; padding:3px; }"
+            "QListWidget::item { min-height:28px; padding:4px 8px; border-radius:5px; }"
             "QListWidget::item:selected { background:#E7EEF8; color:#1F3864; font-weight:600; }"
         )
         self.results_list.itemClicked.connect(self._on_item_clicked)
@@ -66,8 +67,8 @@ class CRSPicker(QWidget):
         self.selected_label = QLabel(tr("No CRS selected"))
         self.selected_label.setObjectName("crsSelectedLabel")
         self.selected_label.setProperty("mhTextKey", "No CRS selected")
-        self.selected_label.setMinimumHeight(48)
-        self.selected_label.setMaximumHeight(58)
+        self.selected_label.setMinimumHeight(34)
+        self.selected_label.setMaximumHeight(38)
         self.selected_label.setWordWrap(False)
         self.selected_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.selected_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
@@ -84,7 +85,7 @@ class CRSPicker(QWidget):
         item = QListWidgetItem(f"{code} — {name}")
         item.setData(Qt.ItemDataRole.UserRole, code)
         item.setData(Qt.ItemDataRole.UserRole + 1, name)
-        item.setSizeHint(QSize(0, 40))
+        item.setSizeHint(QSize(0, 30))
         self.results_list.addItem(item)
 
     def _on_search(self, text: str) -> None:
