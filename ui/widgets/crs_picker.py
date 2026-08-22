@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal, QSize, Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QLabel, QSizePolicy
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
+    QLabel, QSizePolicy,
+)
 
 from core.crs.engine import CRSEngine
 from ui.i18n import tr
 
 
 class CRSPicker(QWidget):
-    """Professional, responsive CRS search/selection widget."""
+    """Compact, deterministic CRS picker used by the CRS Converter page."""
 
     crs_selected = Signal(str, str)
 
@@ -29,51 +32,57 @@ class CRSPicker(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(7)
+        layout.setSpacing(4)
+        layout.setSizeConstraint(QVBoxLayout.SizeConstraint.SetMinimumSize)
 
         self.title_label = QLabel(label)
         self.title_label.setObjectName("crsPickerTitle")
         self.title_label.setProperty("mhTextKey", label)
-        self.title_label.setMinimumHeight(25)
+        self.title_label.setFixedHeight(23)
         self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.title_label)
 
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText(tr("Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh..."))
-        self.search_box.setProperty("mhPlaceholderKey", "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...")
-        self.search_box.setMinimumHeight(40)
+        self.search_box.setPlaceholderText(
+            tr("Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...")
+        )
+        self.search_box.setProperty(
+            "mhPlaceholderKey",
+            "Search CRS: WGS 84, EPSG:4326, UTM, Ain el Abd, Amanah Riyadh...",
+        )
+        self.search_box.setFixedHeight(38)
         self.search_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.search_box.setFont(QFont("Segoe UI", 10))
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
 
         self.results_list = QListWidget()
-        # Responsive list: it shrinks on small laptop displays and grows on
-        # larger screens, without ever overlapping the selected footer.
-        self.results_list.setMinimumHeight(105)
-        self.results_list.setMaximumHeight(165)
-        self.results_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # Exactly five compact rows fit inside the available 225px picker
+        # without ever colliding with the selected-CRS footer.
+        self.results_list.setFixedHeight(106)
+        self.results_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.results_list.setUniformItemSizes(True)
-        self.results_list.setSpacing(1)
-        self.results_list.setFont(QFont("Segoe UI", 10))
+        self.results_list.setSpacing(0)
+        self.results_list.setFont(QFont("Segoe UI", 9))
         self.results_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.results_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.results_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.results_list.setStyleSheet(
-            "QListWidget { border:1px solid #C7D0DD; border-radius:7px; background:#FFFFFF; padding:3px; }"
-            "QListWidget::item { min-height:28px; padding:4px 8px; border-radius:5px; }"
+            "QListWidget { border:1px solid #C7D0DD; border-radius:7px; background:#FFFFFF; padding:2px; }"
+            "QListWidget::item { min-height:20px; height:20px; padding:1px 7px; border-radius:4px; }"
             "QListWidget::item:selected { background:#E7EEF8; color:#1F3864; font-weight:600; }"
         )
         self.results_list.itemClicked.connect(self._on_item_clicked)
-        layout.addWidget(self.results_list, 1)
+        layout.addWidget(self.results_list)
 
         self.selected_label = QLabel(tr("No CRS selected"))
         self.selected_label.setObjectName("crsSelectedLabel")
         self.selected_label.setProperty("mhTextKey", "No CRS selected")
-        self.selected_label.setMinimumHeight(34)
-        self.selected_label.setMaximumHeight(40)
+        self.selected_label.setFixedHeight(32)
         self.selected_label.setWordWrap(False)
         self.selected_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.selected_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.selected_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.selected_label)
 
         self._show_quick_crs()
@@ -87,7 +96,7 @@ class CRSPicker(QWidget):
         item = QListWidgetItem(f"{code} — {name}")
         item.setData(Qt.ItemDataRole.UserRole, code)
         item.setData(Qt.ItemDataRole.UserRole + 1, name)
-        item.setSizeHint(QSize(0, 30))
+        item.setSizeHint(QSize(0, 20))
         self.results_list.addItem(item)
 
     def _on_search(self, text: str) -> None:
@@ -100,7 +109,10 @@ class CRSPicker(QWidget):
             return
 
         normalized = " ".join(query.lower().split())
-        if normalized in {"wgs 84", "wgs84", "wgs 84 geographic", "latitude longitude", "latitude/longitude", "lat long", "lat/lon", "geographic"}:
+        if normalized in {
+            "wgs 84", "wgs84", "wgs 84 geographic", "latitude longitude",
+            "latitude/longitude", "lat long", "lat/lon", "geographic",
+        }:
             self._add_result("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
             self._add_result("EPSG:4979", "WGS 84 — Geographic 3D (Latitude / Longitude / Ellipsoidal Height)")
 
@@ -109,7 +121,10 @@ class CRSPicker(QWidget):
         except Exception:
             results = []
 
-        existing = {self.results_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.results_list.count())}
+        existing = {
+            self.results_list.item(i).data(Qt.ItemDataRole.UserRole)
+            for i in range(self.results_list.count())
+        }
         for result in results:
             code = result.epsg
             if code in existing:
@@ -117,7 +132,10 @@ class CRSPicker(QWidget):
             self._add_result(code, result.name)
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        self.set_selected(str(item.data(Qt.ItemDataRole.UserRole)), str(item.data(Qt.ItemDataRole.UserRole + 1)))
+        self.set_selected(
+            str(item.data(Qt.ItemDataRole.UserRole)),
+            str(item.data(Qt.ItemDataRole.UserRole + 1)),
+        )
 
     def set_selected(self, epsg: str, name: str) -> None:
         epsg = epsg.strip()
