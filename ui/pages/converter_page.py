@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
-    QTableWidget, QTableWidgetItem, QProgressBar, QSplitter, QMessageBox,
+    QTableWidget, QTableWidgetItem, QProgressBar, QMessageBox,
     QGroupBox, QHeaderView, QSizePolicy,
 )
 
@@ -36,84 +36,89 @@ class ConverterPage(QWidget):
         self.current_file = None
         self.workspace_folder = None
 
+        # Page-only layout: fixed heights for controls, stretch only for the
+        # results table. This prevents the CRS pickers from consuming the
+        # vertical space needed by the results/export sections.
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 10, 18, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(12, 8, 12, 10)
+        root.setSpacing(6)
 
         title = QLabel(tr("CRS Converter"))
         title.setObjectName("pageTitle")
         title.setProperty("mhTextKey", "CRS Converter")
-        title.setMinimumHeight(32)
-        root.addWidget(title)
+        title.setFixedHeight(30)
+        root.addWidget(title, 0)
 
         self.workspace_bar = WorkspaceFileBar()
         self.workspace_bar.file_selected.connect(self._load_path)
-        root.addWidget(self.workspace_bar)
+        self.workspace_bar.setMaximumHeight(40)
+        self.workspace_bar.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        root.addWidget(self.workspace_bar, 0)
 
         file_row = QHBoxLayout()
-        file_row.setSpacing(10)
+        file_row.setContentsMargins(0, 0, 0, 0)
+        file_row.setSpacing(8)
         self.choose_btn = QPushButton(tr("SOURCE FILE"))
         self.choose_btn.setProperty("mhTextKey", "SOURCE FILE")
-        self.choose_btn.setMinimumWidth(145)
-        self.choose_btn.setMinimumHeight(42)
+        self.choose_btn.setFixedSize(145, 40)
         self.choose_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.choose_btn.clicked.connect(self._choose_file)
         file_row.addWidget(self.choose_btn, 0)
+
         self.file_label = QLabel(tr("No file selected"))
         self.file_label.setProperty("mhTextKey", "No file selected")
         self.file_label.setWordWrap(False)
-        self.file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.file_label.setMinimumHeight(40)
+        self.file_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         file_row.addWidget(self.file_label, 1)
-        root.addLayout(file_row)
+        root.addLayout(file_row, 0)
 
-        # Two equal responsive CRS panels. They grow to the reference size on
-        # large displays and shrink safely on 768p displays without overlap.
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        splitter.setMinimumHeight(225)
-        splitter.setMaximumHeight(305)
-        splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # Two equal CRS panels. Do not use a QSplitter here: the splitter's
+        # dynamic height was the source of the previous overlap with the
+        # summary/table/export area. CRSPicker itself has a compact internal
+        # height of about 211 px, so 214 px gives it a safe 3 px margin.
+        crs_row = QHBoxLayout()
+        crs_row.setContentsMargins(0, 0, 0, 0)
+        crs_row.setSpacing(10)
 
         self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
         self.target_picker = CRSPicker(self.engine, tr("TARGET CRS"))
         for picker in (self.source_picker, self.target_picker):
-            picker.setMinimumHeight(225)
-            picker.setMaximumHeight(305)
-            picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            splitter.addWidget(picker)
+            picker.setFixedHeight(214)
+            picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            crs_row.addWidget(picker, 1)
 
-        splitter.setSizes([1, 1])
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
-        root.addWidget(splitter, 0)
+        root.addLayout(crs_row, 0)
 
         convert_row = QHBoxLayout()
-        convert_row.setSpacing(10)
+        convert_row.setContentsMargins(0, 0, 0, 0)
+        convert_row.setSpacing(8)
         self.convert_btn = QPushButton(tr("CONVERT"))
         self.convert_btn.setProperty("mhTextKey", "CONVERT")
         self.convert_btn.setObjectName("primaryButton")
-        self.convert_btn.setMinimumHeight(42)
-        self.convert_btn.setMinimumWidth(155)
+        self.convert_btn.setFixedSize(130, 38)
         self.convert_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.convert_btn.clicked.connect(self._run_conversion)
         convert_row.addWidget(self.convert_btn, 0)
         convert_row.addStretch(1)
-        root.addLayout(convert_row)
+        root.addLayout(convert_row, 0)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
-        self.progress.setMinimumHeight(12)
-        self.progress.setMaximumHeight(12)
-        root.addWidget(self.progress)
+        self.progress.setFixedHeight(10)
+        root.addWidget(self.progress, 0)
 
         summary_box = QGroupBox()
         summary_box.setObjectName("conversionSummary")
-        summary_box.setMinimumHeight(56)
-        summary_box.setMaximumHeight(64)
+        summary_box.setFixedHeight(52)
         summary_layout = QHBoxLayout(summary_box)
-        summary_layout.setContentsMargins(16, 7, 16, 7)
-        summary_layout.setSpacing(18)
+        summary_layout.setContentsMargins(12, 5, 12, 5)
+        summary_layout.setSpacing(10)
         self.total_label = QLabel(f"{tr('Total Points')}: 0")
         self.success_label = QLabel(f"{tr('Successful')}: 0")
         self.failed_label = QLabel(f"{tr('Failed')}: 0")
@@ -125,8 +130,8 @@ class ConverterPage(QWidget):
             (self.warning_label, "Warnings"),
         ):
             label.setProperty("mhTextKey", key)
-            label.setMinimumHeight(32)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setMinimumHeight(30)
             label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             summary_layout.addWidget(label, 1)
         root.addWidget(summary_box, 0)
@@ -137,22 +142,23 @@ class ConverterPage(QWidget):
             tr("Name"), tr("Src X"), tr("Src Y"), tr("Src Z"),
             tr("Tgt X"), tr("Tgt Y"), tr("Tgt Z"), tr("Status"), tr("Message"),
         ])
-        self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.results_table.horizontalHeader().setMinimumSectionSize(88)
-        self.results_table.verticalHeader().setDefaultSectionSize(29)
+        header = self.results_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setMinimumSectionSize(82)
+        self.results_table.verticalHeader().setDefaultSectionSize(28)
+        self.results_table.verticalHeader().setMinimumSectionSize(28)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setWordWrap(False)
-        self.results_table.setMinimumHeight(90)
+        self.results_table.setMinimumHeight(75)
         self.results_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root.addWidget(self.results_table, 1)
 
         export_box = QGroupBox(tr("Export Converted Points"))
         export_box.setProperty("mhTitleKey", "Export Converted Points")
-        export_box.setMinimumHeight(76)
-        export_box.setMaximumHeight(94)
+        export_box.setFixedHeight(72)
         export_row = QHBoxLayout(export_box)
-        export_row.setContentsMargins(10, 10, 10, 9)
-        export_row.setSpacing(8)
+        export_row.setContentsMargins(8, 9, 8, 8)
+        export_row.setSpacing(7)
         self.export_dxf_btn = self._export_button("AutoCAD / Civil 3D — DXF", self._export_dxf)
         self.export_civil_btn = self._export_button("Civil 3D — PENZD CSV", self._export_civil3d)
         self.export_xlsx_btn = self._export_button("Excel XLSX", self._export_xlsx)
@@ -163,8 +169,7 @@ class ConverterPage(QWidget):
             self.export_csv_btn, self.export_txt_btn,
         ):
             button.setEnabled(False)
-            button.setMinimumHeight(44)
-            button.setMaximumHeight(54)
+            button.setFixedHeight(42)
             export_row.addWidget(button, 1)
         root.addWidget(export_box, 0)
 
@@ -172,7 +177,7 @@ class ConverterPage(QWidget):
     def _export_button(text: str, slot) -> QPushButton:
         button = QPushButton(tr(text))
         button.setProperty("mhTextKey", text)
-        button.setMinimumHeight(44)
+        button.setFixedHeight(42)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.clicked.connect(slot)
         return button
