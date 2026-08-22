@@ -48,10 +48,9 @@ class CRSPicker(QWidget):
         layout.addWidget(self.search_box)
 
         self.results_list = QListWidget()
-        # Five quick CRS entries fit cleanly in the reference layout without
-        # colliding with the selected-CRS footer. The widget may grow further
-        # when its parent gives it more vertical space.
-        self.results_list.setMinimumHeight(135)
+        # Responsive list: it shrinks on small laptop displays and grows on
+        # larger screens, without ever overlapping the selected footer.
+        self.results_list.setMinimumHeight(105)
         self.results_list.setMaximumHeight(165)
         self.results_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.results_list.setUniformItemSizes(True)
