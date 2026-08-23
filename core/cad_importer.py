@@ -1,10 +1,10 @@
-"""CAD/KMZ point extraction for MH - Coordinate.
+"""Robust CAD coordinate extraction for MH - Coordinate.
 
-DXF is read directly with ezdxf. Survey drawings often store points as POINT
-entities, polyline vertices, or INSERT/block insertion points, so the importer
-uses a layered extraction strategy and reports a useful error when a drawing
-contains no coordinate-bearing entities. DWG remains supported through the
-optional ezdxf ODA File Converter bridge.
+DXF is read with ezdxf and, when the normal reader rejects a damaged drawing,
+its recovery reader is attempted. Survey drawings commonly contain POINT,
+LWPOLYLINE/POLYLINE vertices, Civil 3D block insertions, and 3DFACE vertices.
+All coordinate-bearing entities are collected and exact duplicates are removed.
+DWG remains supported through the optional ezdxf ODA File Converter bridge.
 """
 from __future__ import annotations
 
@@ -18,64 +18,73 @@ def _point(name: str, xyz) -> PointResult:
     return PointResult(name, float(values[0]), float(values[1]), float(values[2]))
 
 
-def _entity_name(entity, fallback: str) -> str:
-    layer = str(getattr(entity.dxf, "layer", "0") or "0")
-    if entity.dxftype() == "INSERT":
-        block = str(getattr(entity.dxf, "name", "BLOCK") or "BLOCK")
-        # Prefer a useful block/point identifier while keeping names unique.
-        return f"{block}-{fallback}"
-    return f"{layer}-{fallback}"
-
-
 def _extract_from_doc(doc) -> list[PointResult]:
     msp = doc.modelspace()
     result: list[PointResult] = []
     counter = 1
 
-    # Native survey POINT entities.
+    # Native survey/CAD POINT entities.
     for entity in msp.query("POINT"):
-        result.append(_point(f"POINT-{counter}", entity.dxf.location))
-        counter += 1
+        location = getattr(entity.dxf, "location", None)
+        if location is not None:
+            result.append(_point(f"POINT-{counter}", location))
+            counter += 1
 
-    # Lightweight and classic polylines: every vertex is a coordinate point.
+    # Lightweight polylines: every vertex is a coordinate point.
     for entity in msp.query("LWPOLYLINE"):
         layer = str(getattr(entity.dxf, "layer", "0") or "0")
         elevation = float(getattr(entity.dxf, "elevation", 0.0) or 0.0)
-        for vertex in entity.get_points("xy"):
+        try:
+            vertices = entity.get_points("xy")
+        except Exception:
+            vertices = []
+        for vertex in vertices:
             result.append(_point(f"{layer}-PL-{counter}", (vertex[0], vertex[1], elevation)))
             counter += 1
 
+    # Classic 2D/3D POLYLINE vertices.
     for entity in msp.query("POLYLINE"):
         layer = str(getattr(entity.dxf, "layer", "0") or "0")
-        for vertex in entity.vertices:
-            result.append(_point(f"{layer}-PL-{counter}", vertex.dxf.location))
-            counter += 1
+        try:
+            vertices = entity.vertices
+        except Exception:
+            vertices = []
+        for vertex in vertices:
+            location = getattr(vertex.dxf, "location", None)
+            if location is not None:
+                result.append(_point(f"{layer}-PL-{counter}", location))
+                counter += 1
 
-    # Many Civil 3D/survey exports represent COGO points as blocks. Only use
-    # INSERTs as a fallback when no POINT/polyline coordinates were found, so
-    # ordinary drawings do not suddenly receive duplicate block coordinates.
-    if not result:
-        for entity in msp.query("INSERT"):
-            insertion = getattr(entity.dxf, "insert", None)
-            if insertion is None:
-                continue
-            result.append(_point(_entity_name(entity, f"INS-{counter}"), insertion))
-            counter += 1
+    # Civil 3D/survey COGO points are frequently stored as INSERTs. Collect
+    # them even when the drawing also contains polylines; duplicate coordinates
+    # are removed below.
+    for entity in msp.query("INSERT"):
+        insertion = getattr(entity.dxf, "insert", None)
+        if insertion is None:
+            continue
+        block = str(getattr(entity.dxf, "name", "BLOCK") or "BLOCK")
+        layer = str(getattr(entity.dxf, "layer", "0") or "0")
+        result.append(_point(f"{layer}-{block}-{counter}", insertion))
+        counter += 1
 
-    # 3DFACE is another common way to carry survey vertices in exported CAD.
-    if not result:
-        for entity in msp.query("3DFACE"):
-            for attr in ("vtx0", "vtx1", "vtx2", "vtx3"):
-                value = getattr(entity.dxf, attr, None)
-                if value is not None:
-                    result.append(_point(f"FACE-{counter}", value))
-                    counter += 1
+    # 3DFACE vertices are also common in exported survey/CAD data.
+    for entity in msp.query("3DFACE"):
+        for attr in ("vtx0", "vtx1", "vtx2", "vtx3"):
+            value = getattr(entity.dxf, attr, None)
+            if value is not None:
+                result.append(_point(f"FACE-{counter}", value))
+                counter += 1
 
-    # Remove exact duplicate coordinates introduced by closed polylines/faces.
+    # Remove exact coordinate duplicates caused by closed polylines, block
+    # representations, or 3DFACE shared corners.
     unique: list[PointResult] = []
     seen: set[tuple[float, float, float]] = set()
     for point in result:
-        key = (round(float(point.src_x), 9), round(float(point.src_y), 9), round(float(point.src_z or 0.0), 9))
+        key = (
+            round(float(point.src_x), 9),
+            round(float(point.src_y), 9),
+            round(float(point.src_z or 0.0), 9),
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -86,16 +95,36 @@ def _extract_from_doc(doc) -> list[PointResult]:
 def _dxf_points(path: str | Path) -> list[PointResult]:
     import ezdxf
 
+    doc = None
+    first_error = None
     try:
         doc = ezdxf.readfile(str(path))
     except Exception as exc:
-        raise RuntimeError(
-            "The DXF file could not be read. Verify that it is a valid DXF drawing and is not locked/corrupted."
-        ) from exc
+        first_error = exc
+
+    # Recovery mode handles otherwise valid DXF files with damaged sections,
+    # duplicate handles, or minor structural errors without hiding the failure.
+    if doc is None:
+        try:
+            from ezdxf import recover
+            doc, auditor = recover.readfile(str(path))
+            if auditor.has_errors:
+                # Keep the recovered document: coordinate extraction can still
+                # be valid even when the drawing has non-coordinate audit errors.
+                pass
+        except Exception as recover_error:
+            raise RuntimeError(
+                "The DXF file could not be read or recovered. Verify that it is a valid DXF drawing and is not locked/corrupted."
+            ) from recover_error
+
     points = _extract_from_doc(doc)
     if not points:
+        detail = ""
+        if first_error is not None:
+            detail = f" Original reader error: {first_error}"
         raise RuntimeError(
-            "The DXF drawing was recognized, but no POINT/polyline/block coordinates were found in model space."
+            "The DXF drawing was recognized, but no coordinate-bearing POINT, polyline vertex, block insertion, or 3DFACE vertex was found in model space."
+            + detail
         )
     return points
 
