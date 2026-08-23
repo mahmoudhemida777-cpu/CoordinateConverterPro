@@ -5,7 +5,25 @@ parsers, CAD handling, exports, translations, and other pages are untouched.
 """
 from __future__ import annotations
 
-from PySide6.QtWidgets import QGroupBox, QPushButton, QSizePolicy
+from PySide6.QtWidgets import QBoxLayout, QGroupBox, QPushButton, QSizePolicy
+
+
+def _find_layout_containing(root_layout, widget):
+    """Return the nested layout that directly contains *widget*."""
+    if root_layout is None:
+        return None
+    for index in range(root_layout.count()):
+        item = root_layout.itemAt(index)
+        if item is None:
+            continue
+        if item.widget() is widget:
+            return root_layout
+        child = item.layout()
+        if child is not None:
+            found = _find_layout_containing(child, widget)
+            if found is not None:
+                return found
+    return None
 
 
 def apply_converter_page_layout(window) -> None:
@@ -31,20 +49,26 @@ def apply_converter_page_layout(window) -> None:
     if hasattr(page, "file_label"):
         page.file_label.setFixedHeight(34)
 
-    # CRS pickers: keep both columns identical and large enough for the
-    # search field + visible result list. Do not force them to grow beyond
-    # the available page height.
-    for picker in (
-        getattr(page, "source_picker", None),
-        getattr(page, "target_picker", None),
-    ):
-        if picker is not None:
-            picker.setMinimumHeight(211)
-            picker.setFixedHeight(211)
-            picker.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Fixed,
-            )
+    # CRS pickers intentionally stack vertically, matching the CAD page's
+    # section-oriented layout. This eliminates the horizontal squeeze that
+    # caused the Source/Target lists to overlap and makes each picker full
+    # width. We change only the direction of their existing layout; the
+    # picker widgets and all CRS logic remain untouched.
+    source_picker = getattr(page, "source_picker", None)
+    target_picker = getattr(page, "target_picker", None)
+    if source_picker is not None and target_picker is not None:
+        crs_layout = _find_layout_containing(root, source_picker)
+        if crs_layout is not None and crs_layout is _find_layout_containing(root, target_picker):
+            if isinstance(crs_layout, QBoxLayout):
+                crs_layout.setDirection(QBoxLayout.Direction.TopToBottom)
+            crs_layout.setSpacing(10)
+            for picker in (source_picker, target_picker):
+                picker.setMinimumHeight(225)
+                picker.setMaximumHeight(16777215)
+                picker.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Expanding,
+                )
 
     if hasattr(page, "convert_btn"):
         page.convert_btn.setFixedSize(120, 34)
@@ -70,11 +94,8 @@ def apply_converter_page_layout(window) -> None:
         table.verticalHeader().setDefaultSectionSize(26)
         table.verticalHeader().setMinimumSectionSize(26)
 
-    # IMPORTANT: Export Converted Points contains BOTH the information label
-    # and the five export buttons. The old 62 px fixed height was too small
-    # for its contents and caused the buttons to be clipped/hidden. Keep the
-    # whole group visible; the Export page itself remains independent from
-    # the Results page, so this does not steal height from the results table.
+    # Export Converted Points contains BOTH the information label and the
+    # five export buttons. Keep the complete group visible.
     export_box = None
     for box in page.findChildren(QGroupBox):
         if (
@@ -102,9 +123,6 @@ def apply_converter_page_layout(window) -> None:
                 QSizePolicy.Policy.Fixed,
             )
 
-    # Keep the three internal pages usable even when the host window is
-    # resized. The application's MainWindow already enforces 1100x700 as the
-    # minimum window size; no global/page changes are made here.
     page.setSizePolicy(
         QSizePolicy.Policy.Expanding,
         QSizePolicy.Policy.Expanding,
