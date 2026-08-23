@@ -36,12 +36,9 @@ class ConverterPage(QWidget):
         self.current_file = None
         self.workspace_folder = None
 
-        # Page-only layout: fixed heights for controls, stretch only for the
-        # results table. This prevents the CRS pickers from consuming the
-        # vertical space needed by the results/export sections.
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 8, 12, 10)
-        root.setSpacing(6)
+        root.setContentsMargins(12, 7, 12, 8)
+        root.setSpacing(5)
 
         title = QLabel(tr("CRS Converter"))
         title.setObjectName("pageTitle")
@@ -51,11 +48,8 @@ class ConverterPage(QWidget):
 
         self.workspace_bar = WorkspaceFileBar()
         self.workspace_bar.file_selected.connect(self._load_path)
-        self.workspace_bar.setMaximumHeight(40)
-        self.workspace_bar.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
+        self.workspace_bar.setFixedHeight(34)
+        self.workspace_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         root.addWidget(self.workspace_bar, 0)
 
         file_row = QHBoxLayout()
@@ -63,35 +57,27 @@ class ConverterPage(QWidget):
         file_row.setSpacing(8)
         self.choose_btn = QPushButton(tr("SOURCE FILE"))
         self.choose_btn.setProperty("mhTextKey", "SOURCE FILE")
-        self.choose_btn.setFixedSize(145, 40)
-        self.choose_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.choose_btn.setFixedSize(130, 34)
         self.choose_btn.clicked.connect(self._choose_file)
         file_row.addWidget(self.choose_btn, 0)
-
         self.file_label = QLabel(tr("No file selected"))
         self.file_label.setProperty("mhTextKey", "No file selected")
         self.file_label.setWordWrap(False)
-        self.file_label.setMinimumHeight(40)
+        self.file_label.setFixedHeight(34)
         self.file_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         file_row.addWidget(self.file_label, 1)
         root.addLayout(file_row, 0)
 
-        # Two equal CRS panels. Do not use a QSplitter here: the splitter's
-        # dynamic height was the source of the previous overlap with the
-        # summary/table/export area. CRSPicker itself has a compact internal
-        # height of about 211 px, so 214 px gives it a safe 3 px margin.
         crs_row = QHBoxLayout()
         crs_row.setContentsMargins(0, 0, 0, 0)
         crs_row.setSpacing(10)
-
         self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
         self.target_picker = CRSPicker(self.engine, tr("TARGET CRS"))
         for picker in (self.source_picker, self.target_picker):
-            picker.setFixedHeight(214)
+            picker.setFixedHeight(211)
             picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             crs_row.addWidget(picker, 1)
-
         root.addLayout(crs_row, 0)
 
         convert_row = QHBoxLayout()
@@ -100,8 +86,7 @@ class ConverterPage(QWidget):
         self.convert_btn = QPushButton(tr("CONVERT"))
         self.convert_btn.setProperty("mhTextKey", "CONVERT")
         self.convert_btn.setObjectName("primaryButton")
-        self.convert_btn.setFixedSize(130, 38)
-        self.convert_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.convert_btn.setFixedSize(120, 34)
         self.convert_btn.clicked.connect(self._run_conversion)
         convert_row.addWidget(self.convert_btn, 0)
         convert_row.addStretch(1)
@@ -110,15 +95,15 @@ class ConverterPage(QWidget):
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
-        self.progress.setFixedHeight(10)
+        self.progress.setFixedHeight(7)
         root.addWidget(self.progress, 0)
 
         summary_box = QGroupBox()
         summary_box.setObjectName("conversionSummary")
-        summary_box.setFixedHeight(52)
+        summary_box.setFixedHeight(44)
         summary_layout = QHBoxLayout(summary_box)
-        summary_layout.setContentsMargins(12, 5, 12, 5)
-        summary_layout.setSpacing(10)
+        summary_layout.setContentsMargins(8, 3, 8, 3)
+        summary_layout.setSpacing(6)
         self.total_label = QLabel(f"{tr('Total Points')}: 0")
         self.success_label = QLabel(f"{tr('Successful')}: 0")
         self.failed_label = QLabel(f"{tr('Failed')}: 0")
@@ -145,19 +130,19 @@ class ConverterPage(QWidget):
         header = self.results_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setMinimumSectionSize(82)
-        self.results_table.verticalHeader().setDefaultSectionSize(28)
-        self.results_table.verticalHeader().setMinimumSectionSize(28)
+        self.results_table.verticalHeader().setDefaultSectionSize(26)
+        self.results_table.verticalHeader().setMinimumSectionSize(26)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setWordWrap(False)
-        self.results_table.setMinimumHeight(75)
+        self.results_table.setMinimumHeight(85)
         self.results_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root.addWidget(self.results_table, 1)
 
         export_box = QGroupBox(tr("Export Converted Points"))
         export_box.setProperty("mhTitleKey", "Export Converted Points")
-        export_box.setFixedHeight(72)
+        export_box.setFixedHeight(62)
         export_row = QHBoxLayout(export_box)
-        export_row.setContentsMargins(8, 9, 8, 8)
+        export_row.setContentsMargins(8, 7, 8, 6)
         export_row.setSpacing(7)
         self.export_dxf_btn = self._export_button("AutoCAD / Civil 3D — DXF", self._export_dxf)
         self.export_civil_btn = self._export_button("Civil 3D — PENZD CSV", self._export_civil3d)
@@ -169,7 +154,6 @@ class ConverterPage(QWidget):
             self.export_csv_btn, self.export_txt_btn,
         ):
             button.setEnabled(False)
-            button.setFixedHeight(42)
             export_row.addWidget(button, 1)
         root.addWidget(export_box, 0)
 
@@ -177,7 +161,7 @@ class ConverterPage(QWidget):
     def _export_button(text: str, slot) -> QPushButton:
         button = QPushButton(tr(text))
         button.setProperty("mhTextKey", text)
-        button.setFixedHeight(42)
+        button.setFixedHeight(34)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.clicked.connect(slot)
         return button
@@ -202,6 +186,26 @@ class ConverterPage(QWidget):
         )
         if path:
             self._load_path(path)
+
+    @staticmethod
+    def _guess_dxf_crs(points):
+        """Return the most likely CRS for common Saudi survey DXF coordinates.
+
+        DXF has no universal CRS tag. A drawing with easting/northing values in
+        UTM ranges is therefore detected as UTM 38N. Geographic DXF coordinates
+        are detected as WGS84. The user can still change the picker manually.
+        """
+        if not points:
+            return None
+        xs = [float(p.src_x) for p in points if p.src_x is not None]
+        ys = [float(p.src_y) for p in points if p.src_y is not None]
+        if not xs or not ys:
+            return None
+        if all(-180.0 <= x <= 180.0 for x in xs) and all(-90.0 <= y <= 90.0 for y in ys):
+            return ("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
+        if all(100000.0 <= x <= 900000.0 for x in xs) and all(0.0 <= y <= 10000000.0 for y in ys):
+            return ("EPSG:32638", "WGS 84 / UTM zone 38N")
+        return None
 
     def _load_path(self, path: str) -> None:
         suffix = Path(path).suffix.casefold()
@@ -232,11 +236,7 @@ class ConverterPage(QWidget):
 
         points = list(points or [])
         if not points:
-            QMessageBox.warning(
-                self,
-                tr("Import"),
-                tr("No coordinate points were detected in the selected file."),
-            )
+            QMessageBox.warning(self, tr("Import"), tr("No coordinate points were detected in the selected file."))
             return
 
         self.source_points = points
@@ -247,11 +247,15 @@ class ConverterPage(QWidget):
         self.workspace_folder = str(Path(path).parent)
         self.workspace_bar.set_folder(self.workspace_folder, path)
 
+        # KML/KMZ is explicitly geographic. For CAD there is normally no CRS
+        # tag, so detect common Saudi UTM survey coordinates instead of leaving
+        # EPSG:4326 selected against values such as 686000 / 2741000.
         if suffix in {".kml", ".kmz"}:
-            self.source_picker.set_selected(
-                "EPSG:4326",
-                "WGS 84 — Geographic 2D (Latitude / Longitude)",
-            )
+            self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
+        elif suffix in {".dxf", ".dwg"}:
+            guessed = self._guess_dxf_crs(points)
+            if guessed:
+                self.source_picker.set_selected(*guessed)
 
         for button in (
             self.export_dxf_btn, self.export_civil_btn, self.export_xlsx_btn,
@@ -282,12 +286,9 @@ class ConverterPage(QWidget):
         self.progress.setMaximum(len(self.source_points))
         self.progress.setValue(0)
         self.result_points = []
-
         try:
             for i, point in enumerate(self.source_points, 1):
-                self.result_points.append(
-                    self.engine.transform_points(src, tgt, [point], "auto")[0]
-                )
+                self.result_points.append(self.engine.transform_points(src, tgt, [point], "auto")[0])
                 self.progress.setValue(i)
         finally:
             self.progress.setVisible(False)
@@ -309,13 +310,8 @@ class ConverterPage(QWidget):
             "operation": selected_operation["description"],
             "status": "SUCCESS",
         })
-
         if zone_warnings or report.warnings:
-            QMessageBox.information(
-                self,
-                tr("Warnings"),
-                "\n".join(zone_warnings + [w.message for w in report.warnings]),
-            )
+            QMessageBox.information(self, tr("Warnings"), "\n".join(zone_warnings + [w.message for w in report.warnings]))
 
     def _fmt(self, value):
         if value is None:
@@ -331,12 +327,8 @@ class ConverterPage(QWidget):
         self.failed_label.setText(f"{tr('Failed')}: {sum(p.status == 'FAILED' for p in pts)}")
         self.warning_label.setText(f"{tr('Warnings')}: {sum(p.status == 'WARNING' for p in pts)}")
         self.results_table.setRowCount(len(pts))
-
         for i, point in enumerate(pts):
-            values = [
-                point.name, point.src_x, point.src_y, point.src_z,
-                point.tgt_x, point.tgt_y, point.tgt_z, point.status, point.message,
-            ]
+            values = [point.name, point.src_x, point.src_y, point.src_z, point.tgt_x, point.tgt_y, point.tgt_z, point.status, point.message]
             for j, value in enumerate(values):
                 self.results_table.setItem(i, j, QTableWidgetItem(self._fmt(value)))
 
@@ -349,39 +341,19 @@ class ConverterPage(QWidget):
     def _export_dxf(self) -> None:
         if not self._require_results():
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            tr("Export AutoCAD / Civil 3D DXF"),
-            "Converted_Points.dxf",
-            "AutoCAD DXF (*.dxf)",
-        )
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export AutoCAD / Civil 3D DXF"), "Converted_Points.dxf", "AutoCAD DXF (*.dxf)")
         if not path:
             return
         try:
-            export_dxf(
-                self.result_points,
-                path,
-                label_mode=LabelMode.NAME,
-                text_height=1.0,
-                use_target_coords=True,
-            )
-            QMessageBox.information(
-                self,
-                tr("Export Complete"),
-                f"{tr('DXF created successfully')}:\n{path}",
-            )
+            export_dxf(self.result_points, path, label_mode=LabelMode.NAME, text_height=1.0, use_target_coords=True)
+            QMessageBox.information(self, tr("Export Complete"), f"{tr('DXF created successfully')}:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, tr("DXF Export Error"), str(exc))
 
     def _export_civil3d(self) -> None:
         if not self._require_results():
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            tr("Export Civil 3D PENZD"),
-            "Civil3D_PENZD.csv",
-            "CSV (*.csv)",
-        )
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export Civil 3D PENZD"), "Civil3D_PENZD.csv", "CSV (*.csv)")
         if not path:
             return
         try:
@@ -392,52 +364,25 @@ class ConverterPage(QWidget):
                 for i, point in enumerate(self.result_points, 1):
                     if point.tgt_x is None or point.tgt_y is None:
                         continue
-                    writer.writerow([
-                        i,
-                        f"{point.tgt_x:.{precision}f}",
-                        f"{point.tgt_y:.{precision}f}",
-                        f"{(point.tgt_z or 0):.{precision}f}",
-                        point.name or "",
-                    ])
-            QMessageBox.information(
-                self,
-                tr("Export Complete"),
-                f"{tr('Civil 3D PENZD point file created')}:\n{path}",
-            )
+                    writer.writerow([i, f"{point.tgt_x:.{precision}f}", f"{point.tgt_y:.{precision}f}", f"{(point.tgt_z or 0):.{precision}f}", point.name or ""])
+            QMessageBox.information(self, tr("Export Complete"), f"{tr('Civil 3D PENZD point file created')}:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, tr("Civil 3D Export Error"), str(exc))
 
     def _export_xlsx(self) -> None:
         if not self._require_results():
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            tr("Export XLSX"),
-            "Project_Export.xlsx",
-            "Excel (*.xlsx)",
-        )
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export XLSX"), "Project_Export.xlsx", "Excel (*.xlsx)")
         if not path:
             return
         details = self.engine.get_crs_details(self.source_picker.selected_epsg())
-        export_xlsx(
-            self.result_points,
-            path,
-            self.source_picker.selected_epsg(),
-            self.target_picker.selected_epsg(),
-            details,
-            current_precision(),
-        )
+        export_xlsx(self.result_points, path, self.source_picker.selected_epsg(), self.target_picker.selected_epsg(), details, current_precision())
         QMessageBox.information(self, tr("Exported"), f"{tr('Saved to')}: {path}")
 
     def _export_csv(self) -> None:
         if not self._require_results():
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            tr("Export CSV"),
-            "Project_Export.csv",
-            "CSV (*.csv)",
-        )
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export CSV"), "Project_Export.csv", "CSV (*.csv)")
         if not path:
             return
         export_csv(self.result_points, path, current_precision())
@@ -446,20 +391,11 @@ class ConverterPage(QWidget):
     def _export_txt(self) -> None:
         if not self._require_results():
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            tr("Export Survey TXT"),
-            "Project_Export.txt",
-            "Text files (*.txt)",
-        )
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export Survey TXT"), "Project_Export.txt", "Text files (*.txt)")
         if not path:
             return
         try:
             export_txt(self.result_points, path, current_precision())
-            QMessageBox.information(
-                self,
-                tr("Export Complete"),
-                f"{tr('TXT created successfully')}:\n{path}",
-            )
+            QMessageBox.information(self, tr("Export Complete"), f"{tr('TXT created successfully')}:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, tr("TXT Export Error"), str(exc))
