@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
     QTableWidget, QTableWidgetItem, QProgressBar, QMessageBox,
-    QGroupBox, QHeaderView, QSizePolicy,
+    QGroupBox, QHeaderView, QSizePolicy, QStackedWidget,
 )
 
 from core.crs.engine import CRSEngine
@@ -28,6 +28,18 @@ from core.cad_importer import extract_cad_points
 
 
 class ConverterPage(QWidget):
+    """CRS conversion workspace.
+
+    The converter intentionally uses three internal pages so the controls never
+    compete for vertical space:
+      1) Source file + CRS selection
+      2) Conversion results
+      3) Export converted points
+
+    Existing conversion/CAD/export logic is kept intact; only this page's
+    presentation and navigation are changed.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.engine = CRSEngine()
@@ -37,73 +49,148 @@ class ConverterPage(QWidget):
         self.workspace_folder = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 7, 12, 8)
-        root.setSpacing(5)
+        root.setContentsMargins(14, 10, 14, 12)
+        root.setSpacing(8)
 
         title = QLabel(tr("CRS Converter"))
         title.setObjectName("pageTitle")
         title.setProperty("mhTextKey", "CRS Converter")
-        title.setFixedHeight(30)
+        title.setMinimumHeight(34)
         root.addWidget(title, 0)
 
         self.workspace_bar = WorkspaceFileBar()
         self.workspace_bar.file_selected.connect(self._load_path)
-        self.workspace_bar.setFixedHeight(34)
+        self.workspace_bar.setFixedHeight(36)
         self.workspace_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         root.addWidget(self.workspace_bar, 0)
 
-        file_row = QHBoxLayout()
-        file_row.setContentsMargins(0, 0, 0, 0)
-        file_row.setSpacing(8)
+        self._build_step_bar(root)
+
+        self.stack = QStackedWidget()
+        self.stack.setObjectName("crsConverterStack")
+        self.stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        root.addWidget(self.stack, 1)
+
+        self._build_source_page()
+        self._build_results_page()
+        self._build_export_page()
+        self._show_step(0)
+
+    # ------------------------------------------------------------------
+    # Three-page UI
+    # ------------------------------------------------------------------
+    def _build_step_bar(self, root: QVBoxLayout) -> None:
+        bar = QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.setSpacing(8)
+        self.step_buttons = []
+        labels = [
+            tr("1  Source & CRS"),
+            tr("2  Results"),
+            tr("3  Export"),
+        ]
+        for index, text in enumerate(labels):
+            button = QPushButton(text)
+            button.setProperty("crsStep", True)
+            button.setCheckable(True)
+            button.setFixedHeight(36)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.clicked.connect(lambda _checked=False, i=index: self._show_step(i))
+            self.step_buttons.append(button)
+            bar.addWidget(button, 1)
+        root.addLayout(bar, 0)
+
+    def _show_step(self, index: int) -> None:
+        index = max(0, min(index, 2))
+        self.stack.setCurrentIndex(index)
+        for i, button in enumerate(self.step_buttons):
+            button.setChecked(i == index)
+            button.setProperty("active", i == index)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+    def _nav_buttons(self, back_index: int, next_index: int | None):
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
+        back = QPushButton(tr("◀ Previous"))
+        back.setFixedSize(140, 38)
+        back.clicked.connect(lambda: self._show_step(back_index))
+        row.addWidget(back)
+        row.addStretch(1)
+        if next_index is not None:
+            nxt = QPushButton(tr("Next ▶"))
+            nxt.setObjectName("primaryButton")
+            nxt.setFixedSize(140, 38)
+            nxt.clicked.connect(lambda: self._show_step(next_index))
+            row.addWidget(nxt)
+        return row
+
+    def _build_source_page(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(10)
+
+        file_box = QGroupBox(tr("Source File"))
+        file_layout = QHBoxLayout(file_box)
+        file_layout.setContentsMargins(10, 10, 10, 10)
+        file_layout.setSpacing(10)
         self.choose_btn = QPushButton(tr("SOURCE FILE"))
         self.choose_btn.setProperty("mhTextKey", "SOURCE FILE")
-        self.choose_btn.setFixedSize(130, 34)
+        self.choose_btn.setFixedSize(150, 40)
         self.choose_btn.clicked.connect(self._choose_file)
-        file_row.addWidget(self.choose_btn, 0)
+        file_layout.addWidget(self.choose_btn, 0)
         self.file_label = QLabel(tr("No file selected"))
         self.file_label.setProperty("mhTextKey", "No file selected")
         self.file_label.setWordWrap(False)
-        self.file_label.setFixedHeight(34)
+        self.file_label.setMinimumHeight(40)
         self.file_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        file_row.addWidget(self.file_label, 1)
-        root.addLayout(file_row, 0)
+        file_layout.addWidget(self.file_label, 1)
+        layout.addWidget(file_box, 0)
 
         crs_row = QHBoxLayout()
         crs_row.setContentsMargins(0, 0, 0, 0)
-        crs_row.setSpacing(10)
+        crs_row.setSpacing(14)
         self.source_picker = CRSPicker(self.engine, tr("SOURCE CRS"))
         self.target_picker = CRSPicker(self.engine, tr("TARGET CRS"))
         for picker in (self.source_picker, self.target_picker):
-            picker.setFixedHeight(211)
-            picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            picker.setMinimumHeight(285)
+            picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             crs_row.addWidget(picker, 1)
-        root.addLayout(crs_row, 0)
+        layout.addLayout(crs_row, 1)
 
-        convert_row = QHBoxLayout()
-        convert_row.setContentsMargins(0, 0, 0, 0)
-        convert_row.setSpacing(8)
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(10)
         self.convert_btn = QPushButton(tr("CONVERT"))
         self.convert_btn.setProperty("mhTextKey", "CONVERT")
         self.convert_btn.setObjectName("primaryButton")
-        self.convert_btn.setFixedSize(120, 34)
+        self.convert_btn.setFixedSize(150, 40)
         self.convert_btn.clicked.connect(self._run_conversion)
-        convert_row.addWidget(self.convert_btn, 0)
-        convert_row.addStretch(1)
-        root.addLayout(convert_row, 0)
-
+        action_row.addWidget(self.convert_btn, 0)
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
-        self.progress.setFixedHeight(7)
-        root.addWidget(self.progress, 0)
+        self.progress.setFixedHeight(8)
+        action_row.addWidget(self.progress, 1)
+        layout.addLayout(action_row, 0)
+        layout.addLayout(self._nav_buttons(0, 1), 0)
+        self.stack.addWidget(page)
+
+    def _build_results_page(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(10)
 
         summary_box = QGroupBox()
         summary_box.setObjectName("conversionSummary")
-        summary_box.setFixedHeight(44)
+        summary_box.setMinimumHeight(62)
         summary_layout = QHBoxLayout(summary_box)
-        summary_layout.setContentsMargins(8, 3, 8, 3)
-        summary_layout.setSpacing(6)
+        summary_layout.setContentsMargins(10, 6, 10, 6)
+        summary_layout.setSpacing(8)
         self.total_label = QLabel(f"{tr('Total Points')}: 0")
         self.success_label = QLabel(f"{tr('Successful')}: 0")
         self.failed_label = QLabel(f"{tr('Failed')}: 0")
@@ -116,10 +203,10 @@ class ConverterPage(QWidget):
         ):
             label.setProperty("mhTextKey", key)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setMinimumHeight(30)
+            label.setMinimumHeight(38)
             label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             summary_layout.addWidget(label, 1)
-        root.addWidget(summary_box, 0)
+        layout.addWidget(summary_box, 0)
 
         self.results_table = QTableWidget(0, 9)
         self.results_table.setObjectName("conversionResultsTable")
@@ -129,21 +216,34 @@ class ConverterPage(QWidget):
         ])
         header = self.results_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setMinimumSectionSize(82)
-        self.results_table.verticalHeader().setDefaultSectionSize(26)
-        self.results_table.verticalHeader().setMinimumSectionSize(26)
+        header.setMinimumSectionSize(90)
+        self.results_table.verticalHeader().setDefaultSectionSize(28)
+        self.results_table.verticalHeader().setMinimumSectionSize(28)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setWordWrap(False)
-        self.results_table.setMinimumHeight(85)
         self.results_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        root.addWidget(self.results_table, 1)
+        layout.addWidget(self.results_table, 1)
+        layout.addLayout(self._nav_buttons(0, 2), 0)
+        self.stack.addWidget(page)
 
-        export_box = QGroupBox(tr("Export Converted Points"))
-        export_box.setProperty("mhTitleKey", "Export Converted Points")
-        export_box.setFixedHeight(62)
-        export_row = QHBoxLayout(export_box)
-        export_row.setContentsMargins(8, 7, 8, 6)
-        export_row.setSpacing(7)
+    def _build_export_page(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(12)
+
+        info = QGroupBox(tr("Export Converted Points"))
+        info_layout = QVBoxLayout(info)
+        info_layout.setContentsMargins(16, 16, 16, 16)
+        info_layout.setSpacing(12)
+        self.export_file_label = QLabel(tr("No conversion results available."))
+        self.export_file_label.setWordWrap(True)
+        self.export_file_label.setMinimumHeight(46)
+        info_layout.addWidget(self.export_file_label, 0)
+
+        buttons_row = QHBoxLayout()
+        buttons_row.setContentsMargins(0, 0, 0, 0)
+        buttons_row.setSpacing(10)
         self.export_dxf_btn = self._export_button("AutoCAD / Civil 3D — DXF", self._export_dxf)
         self.export_civil_btn = self._export_button("Civil 3D — PENZD CSV", self._export_civil3d)
         self.export_xlsx_btn = self._export_button("Excel XLSX", self._export_xlsx)
@@ -154,18 +254,25 @@ class ConverterPage(QWidget):
             self.export_csv_btn, self.export_txt_btn,
         ):
             button.setEnabled(False)
-            export_row.addWidget(button, 1)
-        root.addWidget(export_box, 0)
+            buttons_row.addWidget(button, 1)
+        info_layout.addLayout(buttons_row, 0)
+        layout.addWidget(info, 0)
+        layout.addStretch(1)
+        layout.addLayout(self._nav_buttons(1, None), 0)
+        self.stack.addWidget(page)
 
     @staticmethod
     def _export_button(text: str, slot) -> QPushButton:
         button = QPushButton(tr(text))
         button.setProperty("mhTextKey", text)
-        button.setFixedHeight(34)
+        button.setFixedHeight(42)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.clicked.connect(slot)
         return button
 
+    # ------------------------------------------------------------------
+    # Existing workspace/import/conversion logic
+    # ------------------------------------------------------------------
     def set_workspace_folder(self, folder: str) -> None:
         self.workspace_folder = folder
         self.workspace_bar.set_folder(folder, self.current_file)
@@ -189,12 +296,6 @@ class ConverterPage(QWidget):
 
     @staticmethod
     def _guess_dxf_crs(points):
-        """Return the most likely CRS for common Saudi survey DXF coordinates.
-
-        DXF has no universal CRS tag. A drawing with easting/northing values in
-        UTM ranges is therefore detected as UTM 38N. Geographic DXF coordinates
-        are detected as WGS84. The user can still change the picker manually.
-        """
         if not points:
             return None
         xs = [float(p.src_x) for p in points if p.src_x is not None]
@@ -242,14 +343,11 @@ class ConverterPage(QWidget):
         self.source_points = points
         self.result_points = []
         self.current_file = path
-        self.file_label.setProperty("mhTextKey", "")
         self.file_label.setText(f"{Path(path).name} — {len(points)} {tr('points loaded')}")
         self.workspace_folder = str(Path(path).parent)
         self.workspace_bar.set_folder(self.workspace_folder, path)
+        self.export_file_label.setText(f"{Path(path).name} — {len(points)} {tr('points loaded')}")
 
-        # KML/KMZ is explicitly geographic. For CAD there is normally no CRS
-        # tag, so detect common Saudi UTM survey coordinates instead of leaving
-        # EPSG:4326 selected against values such as 686000 / 2741000.
         if suffix in {".kml", ".kmz"}:
             self.source_picker.set_selected("EPSG:4326", "WGS 84 — Geographic 2D (Latitude / Longitude)")
         elif suffix in {".dxf", ".dwg"}:
@@ -262,18 +360,17 @@ class ConverterPage(QWidget):
             self.export_csv_btn, self.export_txt_btn,
         ):
             button.setEnabled(False)
+        self._show_step(0)
 
     def _run_conversion(self) -> None:
         if not self.source_points:
             QMessageBox.warning(self, tr("No data"), tr("Please choose a source file first."))
             return
-
         src = self.source_picker.selected_epsg()
         tgt = self.target_picker.selected_epsg()
         if not src or not tgt:
             QMessageBox.warning(self, tr("No CRS"), tr("Select both Source CRS and Target CRS."))
             return
-
         try:
             selected_operation = self.engine.get_selected_operation(src, tgt, "auto")
         except Exception as exc:
@@ -301,6 +398,10 @@ class ConverterPage(QWidget):
         ):
             button.setEnabled(enabled)
 
+        self.export_file_label.setText(
+            f"{Path(self.current_file).name if self.current_file else ''} — "
+            f"{len(self.result_points)} {tr('converted points ready for export')}"
+        )
         append_history({
             "time": datetime.now().astimezone().isoformat(timespec="seconds"),
             "file": Path(self.current_file).name if self.current_file else "",
@@ -310,6 +411,7 @@ class ConverterPage(QWidget):
             "operation": selected_operation["description"],
             "status": "SUCCESS",
         })
+        self._show_step(1)
         if zone_warnings or report.warnings:
             QMessageBox.information(self, tr("Warnings"), "\n".join(zone_warnings + [w.message for w in report.warnings]))
 
