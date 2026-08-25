@@ -13,26 +13,9 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QLayout,
+    QVBoxLayout,
     QWidget,
 )
-
-
-def _find_layout_containing(root_layout, widget):
-    """Return the nested layout that directly contains *widget*."""
-    if root_layout is None:
-        return None
-    for index in range(root_layout.count()):
-        item = root_layout.itemAt(index)
-        if item is None:
-            continue
-        if item.widget() is widget:
-            return root_layout
-        child = item.layout()
-        if child is not None:
-            found = _find_layout_containing(child, widget)
-            if found is not None:
-                return found
-    return None
 
 
 def _wrap_page_in_scroll_area(page: QWidget) -> bool:
@@ -47,7 +30,7 @@ def _wrap_page_in_scroll_area(page: QWidget) -> bool:
     content = QWidget()
     content.setObjectName("converterPageScrollableContent")
     content.setMinimumWidth(1080)
-    content_layout = page.layout().__class__(content)
+    content_layout = QVBoxLayout(content)
     content_layout.setContentsMargins(10, 5, 10, 7)
     content_layout.setSpacing(5)
     content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
@@ -87,7 +70,7 @@ def apply_converter_page_layout(window) -> None:
         return
 
     # Keep the entire converter usable on short windows, exactly like the CAD
-    # page: the controls remain at their designed sizes and the user scrolls
+    # page: the controls retain their designed sizes and the user scrolls
     # instead of Qt clipping Export or the lower CRS controls.
     _wrap_page_in_scroll_area(page)
 
@@ -95,12 +78,6 @@ def apply_converter_page_layout(window) -> None:
     if root is not None:
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-
-    # The actual content layout is now owned by the scroll area's widget.
-    scroll = page.findChild(QScrollArea, "converterPageOuterScroll")
-    content_root = scroll.widget().layout() if scroll is not None and scroll.widget() is not None else None
-    if content_root is None:
-        return
 
     # Project-file row.
     if hasattr(page, "workspace_bar"):
@@ -114,15 +91,18 @@ def apply_converter_page_layout(window) -> None:
     if hasattr(page, "file_label"):
         page.file_label.setFixedHeight(34)
 
-    # CRS pickers intentionally stack vertically, matching the CAD page's
-    # section-oriented layout. This eliminates the horizontal squeeze that
-    # caused the Source/Target lists to overlap and gives each picker the full
-    # usable width. The picker widgets and all CRS logic remain untouched.
+    # CRITICAL: source_picker and target_picker live inside the Source & CRS
+    # stack page, not directly under ConverterPage's root layout. Resolve their
+    # actual parent layout instead of searching through the QStackedWidget.
+    # This makes the vertical arrangement deterministic and prevents the old
+    # horizontal overlap.
     source_picker = getattr(page, "source_picker", None)
     target_picker = getattr(page, "target_picker", None)
     if source_picker is not None and target_picker is not None:
-        crs_layout = _find_layout_containing(content_root, source_picker)
-        target_layout = _find_layout_containing(content_root, target_picker)
+        source_parent = source_picker.parentWidget()
+        target_parent = target_picker.parentWidget()
+        crs_layout = source_parent.layout() if source_parent is not None else None
+        target_layout = target_parent.layout() if target_parent is not None else None
         if crs_layout is not None and crs_layout is target_layout:
             if isinstance(crs_layout, QBoxLayout):
                 crs_layout.setDirection(QBoxLayout.Direction.TopToBottom)
@@ -160,8 +140,8 @@ def apply_converter_page_layout(window) -> None:
         table.verticalHeader().setMinimumSectionSize(26)
 
     # Export Converted Points contains BOTH the information label and the
-    # five export buttons. Keep the complete group visible without clipping;
-    # on short windows the outer scroll area handles the remaining height.
+    # five export buttons. Keep the complete group visible; short windows can
+    # scroll to it instead of clipping its lower half.
     export_box = None
     for box in page.findChildren(QGroupBox):
         if (
